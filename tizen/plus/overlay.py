@@ -21,7 +21,7 @@ def apply(files):
                          '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
-    index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="home.js"></script>', 'dock styling entry point')
+    index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
@@ -96,6 +96,7 @@ def apply(files):
     home = replace_once(home, '    renderAll();\n    restInDrawer();',
         '    renderAll();\n    restoreSelection();\n    restInDrawer();', 'restore after cold start')
     home = configure_sections(home)
+    home = configure_top_controls(home)
     if '<tizen:service ' in manifest:
         raise ValueError('Upstream now declares a service; review before combining')
     service = '''    <feature name="http://tizen.org/feature/web.service"/>
@@ -117,6 +118,7 @@ def apply(files):
                   'dock-style.css': (ROOT / 'dock-style.css').read_bytes(),
                   'vokino-sections.js': (ROOT / 'vokino-sections.js').read_bytes(),
                   'vokino-sections.css': (ROOT / 'vokino-sections.css').read_bytes(),
+                  'top-controls.js': (ROOT / 'top-controls.js').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files
@@ -160,3 +162,34 @@ def configure_sections(home):
   }
 
   function selectTab(i) {''', 'refresh visible tabs after section edits')
+
+
+def configure_top_controls(home):
+    home = replace_once(home, 'var TAB_KIND = VoKinoSections.tabs()', 'var lastUtility = 2;\n  var TAB_KIND = VoKinoSections.tabs()', 'remember the upper utility row')
+    home = replace_once(home, 'r.style.left = (1508 + 88 * b)', '''var visible = TopControls.slots(), position = visible.indexOf(b);
+      r.style.display = position < 0 ? 'none' : '';
+      r.setAttribute('data-top-action', ['liveTV', 'inputs', 'settings', 'search'][b]);
+      r.style.left = (1772 - 88 * (visible.length - 1 - position))''', 'pack visible upper icons at the right edge')
+    home = replace_once(home, '    revealShelf();', '''    revealShelf();
+    if (st.zone === Z.TOP && st.top >= TAB_KIND.length && TopControls.slots().indexOf(st.top - TAB_KIND.length) >= 0) lastUtility = st.top - TAB_KIND.length;''', 'remember focused upper action')
+    home = replace_once(home, 'Math.max(Data.hasKey() ? 0 : TAB_KIND.length, Math.min(TAB_KIND.length + 3, st.top + dx))',
+        'TopControls.step(st.top, dx, TAB_KIND.length)', 'skip hidden upper actions')
+    home = replace_once(home, '''        } else if (dy > 0) {
+          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < TAB_KIND.length ? 0 : cards.length - 1); }
+          else st.zone = Z.SHELF;
+        }''', '''        } else if (dy < 0 && st.top < TAB_KIND.length) {
+          st.top = TAB_KIND.length + TopControls.preferred(lastUtility);
+        } else if (dy > 0) {
+          if (st.top >= TAB_KIND.length) st.top = st.tab;
+          else if (cards.length) { st.zone = Z.CARDS; st.card = 0; }
+          else st.zone = Z.SHELF;
+        }''', 'vertical navigation between tabs and utility buttons')
+    home = replace_once(home, "      {label: tr('Dim'), value: dimName(),", '''      {label: 'Кнопка «Телеканалы»', toggle: TopControls.values().liveTV, step: function () { TopControls.toggle('liveTV'); }},
+      {label: 'Кнопка «Входы HDMI»', toggle: TopControls.values().inputs, step: function () { TopControls.toggle('inputs'); }},
+      {label: tr('Dim'), value: dimName(),''', 'optional Live TV and HDMI icons')
+    home = replace_once(home, 'state: st, move: move, activate: activate,',
+        '''state: st, move: move, activate: activate, refreshTopControls: function () {
+      if (st.top >= TAB_KIND.length) st.top = TAB_KIND.length + TopControls.preferred(st.top - TAB_KIND.length);
+      renderTop(); updateFocus();
+    },''', 'refresh utility icon visibility without losing focus')
+    return home

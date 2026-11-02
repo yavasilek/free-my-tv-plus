@@ -37,6 +37,7 @@ class BuildTests(unittest.TestCase):
         self.assertIn(b'class="lite"', app['index.html'])
         self.assertIn(b'favorites.js', app['index.html'])
         self.assertIn(b'dock-style.js', app['index.html'])
+        self.assertIn(b'top-controls.js', app['index.html'])
         self.assertIn(b'dock-style.css', app['index.html'])
         self.assertLess(app['index.html'].index(b'vokino-sections.js'), app['index.html'].index(b'vokino-adapter.js'))
         self.assertIn(b'vokino-sections.css', app['index.html'])

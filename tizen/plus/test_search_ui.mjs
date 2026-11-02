@@ -201,8 +201,37 @@ try{
   await full.eval(()=>VoKinoSearch.close());await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter');
   assert.equal(await full.eval(()=>FreeMyTV.state.zone),'settings','Settings remain reachable after changing the number of tabs');
   await full.keyboard.press('Escape');
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=1;FreeMyTV.move(-1,0);});
+  await full.waitForFunction(()=>Data.picks(null).length>0);
+  await full.eval(()=>{FreeMyTV.state.zone='shelf';FreeMyTV.state.shelf=1;FreeMyTV.move(0,0);});
+  await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'cards');
+  await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.top),0);
+  await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.top),tabCount+2,'Up from tabs reaches the remembered upper button directly');
+  await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.top),0,'Down from utilities returns to the active tab');
+  await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'cards');
+  await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'shelf');
+  for(let i=0;i<3;i++)await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
+  const utilityRows=await full.eval(()=>Array.from(document.querySelectorAll('#settings .row')).map(r=>r.textContent));
+  for(const name of ['Кнопка «Телеканалы»','Кнопка «Входы HDMI»']){
+    const at=utilityRows.findIndex(text=>text.includes(name));assert.ok(at>=0);
+    await full.eval(i=>{FreeMyTV.state.row=i;FreeMyTV.activate();},at);
+  }
+  assert.deepEqual(await full.eval(()=>Array.from(document.querySelectorAll('#buttons .round')).filter(e=>getComputedStyle(e).display!=='none').map(e=>e.dataset.topAction)),['settings','search']);
+  await full.keyboard.press('Escape');
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=0;FreeMyTV.move(0,0);});
+  await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.top),tabCount+2);
+  await full.keyboard.press('ArrowRight');assert.equal(await full.eval(()=>FreeMyTV.state.top),tabCount+3);
+  await full.keyboard.press('Enter');assert.equal(await full.eval(()=>VoKinoSearch.isOpen()),true,'Search still opens with optional icons hidden');
+  await full.eval(()=>VoKinoSearch.close());
+  await full.reload();await full.waitForFunction(()=>window.FreeMyTV&&window.TopControls);
+  assert.deepEqual(await full.eval(()=>TopControls.values()),{liveTV:false,inputs:false},'Optional icon visibility persists across reload');
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=0;FreeMyTV.move(0,0);});
+  await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'settings');
+  await full.eval(()=>{TopControls.toggle('liveTV');TopControls.toggle('inputs');});
+  assert.equal(await full.eval(()=>TopControls.slots().length),4);
+  await full.keyboard.press('Escape');
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','Overview selection','long tab strip','dynamic search/settings indices']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','Overview selection','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);
