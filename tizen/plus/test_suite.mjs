@@ -10,7 +10,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false)
   const store = new Map(Object.entries({'fmtv.cards16.rev':'1',...values}));
   if(migrate16)store.delete('fmtv.cards16.rev');
   const requests = [], launches = [], timers = [];
-  const prefs = {cards:initialCards,shelf: ['9Ur5IzDKqV.TizenYouTube', 'UMHvZ0dWqo.AnalogWatch']};
+  const prefs = {cards:initialCards,shelf: ['9Ur5IzDKqV.TizenYouTube', 'UMHvZ0dWqo.AnalogWatch','vYmY3ACVaa.emby']};
   const box = {console, AbortController, URL, clearTimeout() {},
     setTimeout(fn, delay) {timers.push({fn, delay}); return timers.length;}, setInterval() {return 1;},
     document: {hidden: false, addEventListener() {}},
@@ -18,7 +18,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false)
     Prefs: {cards: () => prefs.cards || 2, shelf: () => prefs.shelf, set: (k, v) => {prefs[k] = v;}},
     Data: {picks: () => [], hasKey: () => false, image: p => p, appFor: () => null, showcase: () => [], settingsChanged() {}},
     TV: {launch: id => launches.push(id)},
-    tizen: {application: {getAppInfo() {if(withService)return {};throw new Error('No service in unit test');},
+    tizen: {application: {getAppInfo(id) {if(withService||id==='xvvl3S1TT1.TizenTubeStandalone')return {};throw new Error('No service in unit test');},
       launchAppControl(control, app, yes) {launches.push({control, app}); yes();}},
       ApplicationControlData: function (key, value) {this.key = key; this.value = value;},
       ApplicationControl: function (op, uri, mime, category, data) {this.data = data;}},
@@ -104,7 +104,8 @@ returning.box.TV.launch('bridge-vokino:'+id1,null,()=>{});
 assert.equal(returning.launches.length,0,'Register return handling before opening VoKino');
 await flush();
 assert.equal(returning.launches.length,1);
-assert.equal(returning.requests[0].url,'http://127.0.0.1:8099/watch/vokino');
+assert.ok(returning.requests[0].url.startsWith('http://127.0.0.1:8099/favorites?ids='));
+assert.equal(returning.requests[1].url,'http://127.0.0.1:8099/watch/app?appId=UMHvZ0dWqo.AnalogWatch');
 assert.equal(returning.requests[0].options.method,'POST');
 assert.equal(JSON.stringify(returning.requests).includes(account.token),false,'Launcher coordination never includes the VoKino token');
 const selection=returning.box.VoKinoBridge.takeReturnSelection();
@@ -117,7 +118,7 @@ for(const [requested,target,key] of [['9Ur5IzDKqV.TizenYouTube','xvvl3S1TT1.Tize
   const app=boot({},false,16,true);
   app.box.FreeMyTV={state:{tab:0,card:0,shelf:key==='emby'?2:0,zone:'shelf'}};
   app.box.TV.launch(requested,null,()=>{});await flush();
-  assert.equal(app.requests[0].url,'http://127.0.0.1:8099/watch/'+key);
+  assert.equal(app.requests[1].url,'http://127.0.0.1:8099/watch/app?appId='+target);
   assert.equal(app.launches[0],target);
   assert.equal(app.box.VoKinoBridge.takeReturnSelection().zone,'shelf');
 }
@@ -161,3 +162,17 @@ assert.equal(config.enableSponsorBlock, true); assert.equal(config.enableDeArrow
 config.enableDeArrow = false; storage.set('ytaf-configuration', JSON.stringify(config)); vm.runInContext(prefCode, ctx);
 assert.equal(JSON.parse(storage.get('ytaf-configuration')).enableDeArrow, false, 'One-time migration respects later user choices');
 console.log('Passed: compact cards/cache, bounded image sizes, personal feed filtering/privacy, YouTube mapping, one-time TizenTube settings.');
+
+const generic=boot({},false,16,true);generic.box.FreeMyTV={state:{tab:0,card:0,shelf:0,zone:'shelf'}};
+generic.box.VoKinoBridge.setFavorites(['ABC123.Custom'],true);generic.box.TV.launch('ABC123.Custom',null,()=>{});await flush();await flush();
+assert.equal(generic.requests[1].url,'http://127.0.0.1:8099/watch/app?appId=ABC123.Custom');assert.equal(generic.launches[0],'ABC123.Custom');
+generic.box.VoKinoBridge.setFavorites([],true);generic.requests.length=0;generic.box.TV.launch('ABC123.Custom',null,()=>{});await flush();
+assert.equal(generic.requests.some(r=>r.url.includes('/watch/')),false,'Removed app launches without return');
+assert.equal(generic.requests[0].url,'http://127.0.0.1:8099/cancel-watch');
+generic.requests.length=0;generic.box.TV.launch('bridge-vokino:'+id1,null,()=>{});await flush();assert.equal(generic.requests.some(r=>r.url.includes('/watch/')),false,'Movie deep links respect favorite membership');
+console.log('Passed: generic favorite launch, sync-before-watch and removed-favorite behavior.');
+const nativeTube=boot({},false,16,true);nativeTube.box.VoKinoBridge.setFavorites(['9Ur5IzDKqV.TizenYouTube'],true);
+nativeTube.box.TV.launch('9Ur5IzDKqV.TizenYouTube',null,()=>{});await flush();
+assert.equal(nativeTube.launches[0],'9Ur5IzDKqV.TizenYouTube','An explicitly selected stock YouTube favorite must not be redirected to TizenTube');
+assert.equal(nativeTube.requests[1].url,'http://127.0.0.1:8099/watch/app?appId=9Ur5IzDKqV.TizenYouTube');
+const keepNative=boot({'fmtv.youtube.favorite.rev':'1'},false,16,true);assert.equal(keepNative.prefs.shelf[0],'9Ur5IzDKqV.TizenYouTube','Subsequent starts preserve a later stock YouTube choice');

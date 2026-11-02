@@ -18,7 +18,7 @@ def apply(files):
     if 'id="FreeMyTVio.FreeMyTV"' not in manifest:
         raise ValueError('Unexpected Free My TV application id')
     index = replace_once(files['index.html'].decode('utf-8'), '<script src="home.js"></script>',
-                         '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>', 'home entry point')
+                         '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">', 'performance stylesheet')
@@ -49,6 +49,22 @@ def apply(files):
     home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'vokino-search' || ", 'search blocks screensaver')
     home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close search with sheets')
     home = replace_once(home, 'hideSaver: hideSaver, toast: toast', 'hideSaver: hideSaver, toast: toast, poke: poke', 'search activity resets idle timer')
+    home = replace_once(home, 'shelf = out;', 'shelf = out;\n    VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));', 'synchronize favorite app targets')
+    home = replace_once(home, "label: tr('Shelf'), value:", "label: 'Избранные приложения', value:", 'favorites setting name')
+    home = replace_once(home, "title.appendChild(document.createTextNode(tr('Shelf')));",
+        "title.appendChild(document.createTextNode('Избранные приложения'));", 'favorites editor title')
+    home = replace_once(home, "var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder, a.title);",
+        "var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder);\n      el('span', 'favorite-name', row, a.title);", 'bounded favorite names')
+    home = replace_once(home, "at >= 0 ? '#' + (at + 1) : tr('shelf|Off')",
+        "at >= 0 ? '← ' + (at + 1) + ' →' : 'Не добавлено'", 'visible reorder controls')
+    home = replace_once(home, "tr('OK adds or removes an app. ← → change the order.')",
+        "'OK - добавить/убрать · ← → - порядок · Back - готово'", 'favorites editor hint')
+    home = replace_once(home, 'function openShelfEdit() {', 'function openShelfEdit(selectedId) {', 'open favorites at selected app')
+    home = replace_once(home, '    st.edit = 0;\n    renderShelfEdit();',
+        '    st.edit = 0;\n    editList().rows.forEach(function (a, i) { if (a.id === selectedId) st.edit = i; });\n    renderShelfEdit();', 'focus selected favorite')
+    home = replace_once(home, '    revealShelf();', '    revealShelf();\n    if (window.FavoriteControls) FavoriteControls.update();', 'favorites help follows focus')
+    home = replace_once(home, 'state: st, move: move, activate: activate,',
+        'state: st, move: move, activate: activate, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'remote favorites editor access')
     home = replace_once(home, "var s = TV.name !== 'browser' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);",
         "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
     home = replace_once(home,
@@ -91,6 +107,7 @@ def apply(files):
                   'vokino-adapter.js': (ROOT / 'compact-adapter.js').read_bytes(),
                   'vokino-search.js': (ROOT / 'vokino-search.js').read_bytes(),
                   'vokino-search.css': (ROOT / 'vokino-search.css').read_bytes(),
+                  'favorites.js': (ROOT / 'favorites.js').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files

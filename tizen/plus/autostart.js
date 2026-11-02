@@ -13,17 +13,35 @@ var targets = {
   emby: {appId: 'vYmY3ACVaa.emby', aliases: []}
 };
 var backgroundServices = ['FreeMyTVio.Autostart', 'xvvl3S1TT1.StandaloneService', 'vYmY3ACVaa.service'];
+var favorites = [];
 var returning = null, contextPending = false, contextStarted = 0;
-var status = {version: 7, startedAt: 0, lastTick: 0, lastGap: 0, power: null,
+var status = {version: 8, favoritesCount: 0, startedAt: 0, lastTick: 0, lastGap: 0, power: null,
   reason: '', attempts: 0, launchCount: 0, lastLaunchAt: 0, lastResult: '', pollErrors: 0,
   returnState: 'idle', returnTarget: '', returnCount: 0, statusListener: false};
 
 function cancelReturn(reason) { returning = null; status.returnState = reason || 'idle'; }
-function watchReturn(key) {
-  var target = targets[key];
-  if (!target || typeof target.appId !== 'string') return false;
-  returning = {key: key, ids: [target.appId].concat(target.contexts || []), startedAt: Date.now(), seen: false, missing: 0};
-  status.returnTarget = key; status.returnState = 'waiting-for-app';
+function validAppId(id) {
+  return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) &&
+    id !== homeId && backgroundServices.indexOf(id) < 0 && !/(?:\.service|Service)$/.test(id);
+}
+function setFavorites(ids) {
+  if (!Array.isArray(ids) || ids.length > 128) return false;
+  var next = [];
+  for (var i = 0; i < ids.length; i++) {
+    if (!validAppId(ids[i])) return false;
+    try { tizen.application.getAppInfo(ids[i]); } catch (e) { return false; }
+    if (next.indexOf(ids[i]) < 0) next.push(ids[i]);
+  }
+  favorites = next; status.favoritesCount = next.length;
+  if (returning && next.indexOf(returning.appId) < 0) cancelReturn('removed-from-favorites');
+  return true;
+}
+function watchReturn(id) {
+  if (!validAppId(id) || favorites.indexOf(id) < 0) return false;
+  var key = 'app', target = {aliases: []};
+  Object.keys(targets).forEach(function (name) { if (targets[name].appId === id) { key = name; target = targets[name]; } });
+  returning = {key: key, appId: id, aliases: target.aliases, ids: [id].concat(target.contexts || []), startedAt: Date.now(), seen: false, missing: 0};
+  status.returnTarget = id; status.returnState = 'waiting-for-app';
   return true;
 }
 function homeVisible() {
@@ -31,14 +49,17 @@ function homeVisible() {
   if (status.returnState === 'returning-home') status.returnState = 'home-visible';
   if (wake) { wake = false; launching = false; generation++; status.launchCount++; status.lastResult = 'visible'; }
 }
+function visibleApp(id) {
+  try { return tizen.application.getAppInfo(id).show === true; } catch (e) { return false; }
+}
 function appStatus(id, active) {
   if (id === homeId && active) { homeVisible(); return; }
   if (!returning || !active) return;
-  var target = targets[returning.key];
-  if (returning.ids.indexOf(id) >= 0 || target.aliases.indexOf(id) >= 0) {
+  if (returning.ids.indexOf(id) >= 0 || returning.aliases.indexOf(id) >= 0) {
     if (returning.ids.indexOf(id) < 0) returning.ids.push(id);
     returning.seen = true; status.returnState = 'watching-app';
-  } else if (returning.seen && backgroundServices.indexOf(id) < 0 && !/^(org\.tizen\.|com\.samsung\.)/.test(id)) cancelReturn('other-app');
+  } else if (returning.seen && backgroundServices.indexOf(id) < 0 && !/(?:\.service|Service)$/.test(id) &&
+      (favorites.indexOf(id) >= 0 || visibleApp(id) || !/^(org\.tizen\.|com\.samsung\.)/.test(id))) cancelReturn('other-app');
 }
 function checkReturn(now) {
   if (!returning || power !== 'on') return;
@@ -127,10 +148,22 @@ function startService() {
   status.startedAt = Date.now();
   try {
     server = http.createServer(function (req, res) {
+      if (req.method === 'POST' && req.url.indexOf('/favorites?ids=') === 0) {
+        var accepted = false;
+        try { if (req.url.length <= 32768) accepted = setFavorites(JSON.parse(decodeURIComponent(req.url.slice(15)))); } catch (e) {}
+        res.writeHead(accepted ? 204 : 400, {'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store'}); res.end(); return;
+      }
+      if (req.method === 'POST' && req.url.indexOf('/watch/app?appId=') === 0) {
+        var watched = false;
+        try { watched = watchReturn(decodeURIComponent(req.url.slice(17))); } catch (e) {}
+        res.writeHead(watched ? 204 : 403, {'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store'}); res.end(); return;
+      }
       var watchKey = req.url.indexOf('/watch/') === 0 ? req.url.slice(7) : '';
       var knownTarget = targets[watchKey] && typeof targets[watchKey].appId === 'string';
       if (req.method === 'POST' && (knownTarget || req.url === '/cancel-watch' || req.url === '/home-visible')) {
-        if (knownTarget) watchReturn(watchKey);
+        if (knownTarget) {
+          if (!watchReturn(targets[watchKey].appId)) { res.writeHead(403); res.end(); return; }
+        }
         else if (req.url === '/home-visible') homeVisible();
         else cancelReturn('cancelled');
         res.writeHead(204, {'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store'}); res.end(); return;

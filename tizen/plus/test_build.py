@@ -35,6 +35,9 @@ class BuildTests(unittest.TestCase):
         self.assertLess(app['index.html'].index(b'vokino-adapter.js'), app['index.html'].index(b'home.js'))
         self.assertIn(b'VoKinoBridge.turnPage', app['home.js'])
         self.assertIn(b'class="lite"', app['index.html'])
+        self.assertIn(b'favorites.js', app['index.html'])
+        self.assertIn(b'VoKinoBridge.setFavorites', app['home.js'])
+        self.assertIn(b'function openShelfEdit(selectedId)', app['home.js'])
         with self.assertRaises(ValueError):
             apply(app)
 

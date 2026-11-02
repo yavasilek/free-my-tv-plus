@@ -12,3 +12,10 @@
   -webkit-transition: none;
   transition: none;
 }
+/* The editor keeps the existing 800px TV sheet; names and ranks never overlap. */
+#shelfedit .box { background: #111; box-shadow: none; }
+#shelfedit .row .favorite-name { display: block; max-width: calc(100% - 240px); overflow: hidden; text-overflow: ellipsis; }
+#shelfedit .row .value { font-variant-numeric: tabular-nums; }
+#shelfedit .hint { color: #b4b4b4; }
+#favorites-hint { position: absolute; left: 80px; top: 1038px; font-size: 22px; line-height: 28px; color: #555558; }
+.night #favorites-hint { color: #b4b4b4; }

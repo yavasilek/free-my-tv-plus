@@ -13,8 +13,9 @@ function boot(failures=0,skipCallbacks=false){
   const box={require(name){assert.equal(name,'http');return http;},Date:{now:()=>now},exports:{},
     setInterval(fn){interval=fn;return 1;},clearInterval(){interval=null;},
     tizen:{application:{launch(id,yes,no){assert.equal(id,'FreeMyTVio.FreeMyTV');launches++;if(skipCallbacks)return;if(launches<=failures)no({name:'UnknownError'});else yes();},
-      getAppsContext(yes){yes(apps.map(appId=>({appId})));},addAppStatusChangeListener(fn){listener=fn;return 1;}}}};
+      getAppInfo(id){if(!['UMHvZ0dWqo.AnalogWatch','xvvl3S1TT1.TizenTubeStandalone','vYmY3ACVaa.emby','ABC123.Custom','com.samsung.Favorite','org.tizen.browser'].includes(id))throw new Error('Not installed');return {show:true};},getAppsContext(yes){yes(apps.map(appId=>({appId})));},addAppStatusChangeListener(fn){listener=fn;return 1;}}}};
   vm.createContext(box);vm.runInContext(code,box);box.exports.onStart();
+  server.handler({method:'POST',url:'/favorites?ids='+encodeURIComponent(JSON.stringify(['UMHvZ0dWqo.AnalogWatch','xvvl3S1TT1.TizenTubeStandalone','vYmY3ACVaa.emby']))},{writeHead(code){assert.equal(code,204);},end(){}});
   function reply(state){const req=requests.at(-1),res=new EventEmitter();req.callback(res);res.emit('data',JSON.stringify({device:{PowerState:state}}));res.emit('end');}
   return {box,reply,requests,get launches(){return launches;},get server(){return server;},
     apps(value){apps=value;},activate(id){listener(id,true);},
@@ -57,5 +58,28 @@ const cobalt=boot();cobalt.reply('on');cobalt.tick();cobalt.tick();cobalt.comman
 cobalt.apps(['com.samsung.tv.cobalt-yt']);for(let i=0;i<8;i++)cobalt.tick();assert.equal(cobalt.launches,1,'Track the native Cobalt context even when native apps emit no activation event');
 cobalt.apps([]);cobalt.tick();cobalt.tick();cobalt.tick();assert.equal(cobalt.launches,2);
 const preloaded=boot();preloaded.reply('on');preloaded.tick();preloaded.tick();preloaded.apps(['9Ur5IzDKqV.TizenYouTube']);preloaded.command('/watch/youtube');preloaded.apps(['9Ur5IzDKqV.TizenYouTube','xvvl3S1TT1.TizenTubeStandalone']);preloaded.tick();preloaded.apps(['9Ur5IzDKqV.TizenYouTube']);preloaded.tick();preloaded.tick();preloaded.tick();assert.equal(preloaded.launches,2,'Unrelated preloaded YouTube context must not block returning');
-let rejected=0;preloaded.server.handler({method:'POST',url:'/watch/arbitrary-app'},{writeHead(code){rejected=code;},end(){}});assert.equal(rejected,404,'Only the configured three app targets are allowed');
+let rejected=0;preloaded.server.handler({method:'POST',url:'/watch/arbitrary-app'},{writeHead(code){rejected=code;},end(){}});assert.equal(rejected,404,'Unknown legacy targets are rejected');
 console.log('Passed: delayed boot, standby wake, frozen timer wake, bounded retries, HTTP recovery, no repeated launch during normal viewing.');
+
+const custom=boot();custom.reply('on');custom.tick();custom.tick();
+function post(instance,url){let status;instance.server.handler({method:'POST',url},{writeHead(code){status=code;},end(){}});return status;}
+const sync=(instance,ids)=>post(instance,'/favorites?ids='+encodeURIComponent(JSON.stringify(ids)));
+const watch=(instance,id)=>post(instance,'/watch/app?appId='+encodeURIComponent(id));
+assert.equal(watch(custom,'ABC123.Custom'),403,'An installed app outside favorites must not be watched');
+assert.equal(sync(custom,['ABC123.Custom','ABC123.Custom','com.samsung.Favorite']),204);
+assert.equal(custom.box.status.favoritesCount,2,'Favorites are deduplicated');
+assert.equal(watch(custom,'ABC123.Custom'),204);
+custom.apps(['ABC123.Custom']);custom.tick();for(let i=0;i<8;i++)custom.tick();assert.equal(custom.launches,1);
+custom.apps([]);custom.tick();custom.tick();custom.tick();assert.equal(custom.launches,2,'Return from an arbitrary favorite');
+assert.equal(watch(custom,'ABC123.Custom'),204);custom.apps(['ABC123.Custom']);custom.tick();
+assert.equal(sync(custom,[]),204);custom.apps([]);for(let i=0;i<6;i++)custom.tick();assert.equal(custom.launches,2,'Removing the favorite cancels an armed return');
+assert.equal(watch(custom,'ABC123.Custom'),403);
+assert.equal(post(custom,'/watch/vokino'),403,'Legacy endpoints also respect current favorites');
+for(const invalid of [['not.installed'],['FreeMyTVio.FreeMyTV'],['xvvl3S1TT1.StandaloneService'],['http://foreign.invalid'],{}])assert.equal(sync(custom,invalid),400);
+assert.equal(post(custom,'/favorites?ids=%broken'),400);
+assert.equal(post(custom,'/watch/app?appId=%broken'),403);
+assert.equal(sync(custom,['ABC123.Custom','com.samsung.Favorite']),204);assert.equal(watch(custom,'ABC123.Custom'),204);
+custom.apps(['ABC123.Custom']);custom.tick();custom.activate('com.samsung.Favorite');custom.apps([]);for(let i=0;i<5;i++)custom.tick();assert.equal(custom.launches,2,'A different native favorite cancels return too');
+console.log('Passed: arbitrary favorites, removal cancellation, installed-app validation, malformed requests and native app switching.');
+
+assert.equal(watch(custom,'ABC123.Custom'),204);custom.apps(['ABC123.Custom']);custom.tick();custom.activate('org.tizen.browser');custom.apps([]);for(let i=0;i<5;i++)custom.tick();assert.equal(custom.launches,2,'Visible native apps outside favorites cancel return; system UI stays ignored');

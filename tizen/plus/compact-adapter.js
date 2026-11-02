@@ -8,11 +8,11 @@
   var SEARCH = 'fmtv.vokino.search.v1', searchSeq = 0, searchAbort = null;
   var prefix = 'bridge-vokino:', appId = 'UMHvZ0dWqo.AnalogWatch';
   var youtubeId = 'xvvl3S1TT1.TizenTubeStandalone';
-  var embyId = 'vYmY3ACVaa.emby';
   var serviceAvailable = false;
+  var favoriteIds = [];
   var original = {picks: Data.picks, hasKey: Data.hasKey, image: Data.image,
     appFor: Data.appFor, showcase: Data.showcase, launch: TV.launch};
-  var bridge = window.VoKinoBridge = {version: '0.8', items: [], error: '', lastAction: null, inFlight: false, offsets: {},
+  var bridge = window.VoKinoBridge = {version: '0.9', items: [], error: '', lastAction: null, inFlight: false, offsets: {},
     searchState: {query: '', page: 1, items: [], nextPage: 0, loading: false, error: ''}};
 
   function stored(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
@@ -117,20 +117,37 @@
     ['overview', 'vokino-history', 'vokino-favorites'].forEach(function (k) { var n = s.offsets && s.offsets[k]; if (n >= 0 && n <= 32) offsets[k] = n; });
     s.offsets = offsets; return s;
   };
-  function launchWithReturn(key, start) { rememberSelection(); signal('/watch/' + key, start); }
-  function notifyVisible() { if (!document.hidden) signal('/home-visible'); }
+  function syncFavorites(done) { signal('/favorites?ids=' + encodeURIComponent(JSON.stringify(favoriteIds)), done); }
+  bridge.setFavorites = function (ids, quiet) {
+    var next = [];
+    (Array.isArray(ids) ? ids : []).forEach(function (id) {
+      if (typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) && id !== 'FreeMyTVio.FreeMyTV' &&
+          !/(?:\.service|Service|\.Autostart)$/.test(id) && next.indexOf(id) < 0 && next.length < 128) next.push(id);
+    });
+    var changed = JSON.stringify(next) !== JSON.stringify(favoriteIds);
+    favoriteIds = next;
+    if (changed && !quiet) syncFavorites();
+  };
+  bridge.favorites = function () { return favoriteIds.slice(); };
+  function launchWithReturn(id, start) {
+    if (favoriteIds.indexOf(id) < 0) { signal('/cancel-watch'); start(); return; }
+    rememberSelection();
+    syncFavorites(function () {
+      if (favoriteIds.indexOf(id) < 0) { signal('/cancel-watch'); start(); return; }
+      signal('/watch/app?appId=' + encodeURIComponent(id), start);
+    });
+  }
+  function notifyVisible() { if (!document.hidden) syncFavorites(function () { signal('/home-visible'); }); }
   TV.launch = function (id, params, done) {
-    if (id === '9Ur5IzDKqV.TizenYouTube') id = youtubeId;
-    var target = id === appId ? 'vokino' : id === youtubeId ? 'youtube' : id === embyId ? 'emby' : '';
-    if (target) return launchWithReturn(target, function () {
+    if (id === '9Ur5IzDKqV.TizenYouTube' && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeId) >= 0) id = youtubeId;
+    if (typeof id !== 'string' || id.indexOf(prefix) !== 0) return launchWithReturn(id, function () {
       original.launch.call(TV, id, params, function (ok) { if (!ok) signal('/cancel-watch'); if (done) done(ok); });
     });
-    if (typeof id !== 'string' || id.indexOf(prefix) !== 0) return original.launch.call(TV, id, params, done);
     var ident = id.slice(prefix.length);
     if (!/^[a-f0-9]{24}$/.test(ident)) { if (done) done(false); return; }
     var a = account(), base = a ? a.base : PUBLIC_BASE;
     bridge.lastAction = {id: ident, status: 'requesting'};
-    launchWithReturn('vokino', function () { try {
+    launchWithReturn(appId, function () { try {
       var payload = new tizen.ApplicationControlData('PAYLOAD', [JSON.stringify({values: base + '/view/' + ident})]);
       var control = new tizen.ApplicationControl('http://samsung.com/appcontrol/operation/eden', null, null, null, [payload]);
       tizen.application.launchAppControl(control, appId, function () {
@@ -227,10 +244,13 @@
   function schedule() { if (!document.hidden && !fresh()) setTimeout(function () { bridge.refresh(false); }, 1600); }
   try {
     var shelf = Prefs.shelf();
-    if (Array.isArray(shelf) && shelf.indexOf('9Ur5IzDKqV.TizenYouTube') >= 0) {
+    var tubeInstalled = false;
+    try { tizen.application.getAppInfo(youtubeId); tubeInstalled = true; } catch (e) {}
+    if (!localStorage.getItem('fmtv.youtube.favorite.rev') && tubeInstalled && Array.isArray(shelf) && shelf.indexOf('9Ur5IzDKqV.TizenYouTube') >= 0) {
       var seen = {};
       Prefs.set('shelf', shelf.map(function (id) { return id === '9Ur5IzDKqV.TizenYouTube' ? youtubeId : id; }).filter(function (id) { if (seen[id]) return false; seen[id] = true; return true; }));
     }
+    localStorage.setItem('fmtv.youtube.favorite.rev', '1');
     if (!localStorage.getItem('fmtv.compact.rev')) { Prefs.set('cards', 2); localStorage.setItem('fmtv.compact.rev', '1'); }
     if (!localStorage.getItem('fmtv.cards16.rev')) { Prefs.set('cards', 16); localStorage.setItem('fmtv.cards16.rev', '1'); }
     var cached = stored(CACHE);
@@ -242,6 +262,7 @@
         nextPage: Math.max(0, Math.min(9999, Number(search.nextPage) || 0)), items: search.items.filter(valid).slice(0, 16), loading: false, error: ''};
     }
   } catch (e) {}
+  bridge.setFavorites(Prefs.shelf(), true);
   document.addEventListener('visibilitychange', function () { schedule(); notifyVisible(); });
   bridge.timer = setInterval(schedule, 60000);
   schedule();

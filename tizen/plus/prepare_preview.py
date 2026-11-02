@@ -34,7 +34,7 @@ window.fetch=function(url,options){return fixtures.then(function(data){
   if(r.page&&r.page.next){var n=new URL(r.page.next);n.protocol=u.protocol;n.host=u.host;r.page.next=n.href;}
   return {ok:true,json:function(){return Promise.resolve(r);}};
 });};
-window.Prefs={cards:function(){return 16;},shelf:function(){return [];},set:function(){}};
+window.Prefs={cards:function(){return 16;},shelf:function(){return ['UMHvZ0dWqo.AnalogWatch'];},set:function(){}};
 window.Data={picks:function(){return [];},hasKey:function(){return false;},image:function(p){return p;},appFor:function(){return null;},showcase:function(){return [];},settingsChanged:function(){}};
 window.TV={launch:function(id,p,done){window.__launches.push({id:id});if(done)done(true);}};
 window.tizen={application:{getAppInfo:function(){throw new Error('No native service in browser preview');},launchAppControl:function(control,id,yes){window.__launches.push({id:id});yes();}},
