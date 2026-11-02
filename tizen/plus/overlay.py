@@ -20,9 +20,10 @@ def apply(files):
     index = replace_once(files['index.html'].decode('utf-8'), '<script src="home.js"></script>',
                          '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
+    index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
     index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="home.js"></script>', 'dock styling entry point')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
-                         '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">', 'performance stylesheet')
+                         '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
         "cards: function () { var n = pick('cards', 3); return n < 3 ? 3 : n > 6 ? 6 : n; }",
         "cards: function () { var n = pick('cards', 16); return n < 1 ? 1 : n > 16 ? 16 : n; }", 'card count')
@@ -94,6 +95,7 @@ def apply(files):
         '    reset();\n    restoreSelection();\n    loadApps(', 'restore after relaunch')
     home = replace_once(home, '    renderAll();\n    restInDrawer();',
         '    renderAll();\n    restoreSelection();\n    restInDrawer();', 'restore after cold start')
+    home = configure_sections(home)
     if '<tizen:service ' in manifest:
         raise ValueError('Upstream now declares a service; review before combining')
     service = '''    <feature name="http://tizen.org/feature/web.service"/>
@@ -113,6 +115,48 @@ def apply(files):
                   'favorites.js': (ROOT / 'favorites.js').read_bytes(),
                   'dock-style.js': (ROOT / 'dock-style.js').read_bytes(),
                   'dock-style.css': (ROOT / 'dock-style.css').read_bytes(),
+                  'vokino-sections.js': (ROOT / 'vokino-sections.js').read_bytes(),
+                  'vokino-sections.css': (ROOT / 'vokino-sections.css').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files
+
+
+def configure_sections(home):
+    """Tab indices and utility-button indices follow the user's enabled sections."""
+    replacements = [
+        ("var TAB_KIND = [null, 'vokino-history', 'vokino-favorites'];", "var TAB_KIND = VoKinoSections.tabs().map(function (t) { return t.key; });"),
+        ("var names = [tr('Explore'), 'История', 'Избранное'];", "var names = VoKinoSections.tabs().map(function (t) { return t.name; });"),
+        ("for (var i = 0; i < 3; i++) {\n      var t = el('button', 'tab', tabs, names[i]);", "for (var i = 0; i < names.length; i++) {\n      var t = el('button', 'tab', tabs, names[i]);"),
+        ('hover(r, Z.TOP, 3 + b);', 'hover(r, Z.TOP, TAB_KIND.length + b);'),
+        ('st.top === 3 + i', 'st.top === TAB_KIND.length + i'),
+        ('st.top >= 3', 'st.top >= TAB_KIND.length'),
+        ('st.top < 3) st.top = 3;', 'st.top < TAB_KIND.length) st.top = TAB_KIND.length;'),
+        ('if (st.top < 3) return;', 'if (st.top < TAB_KIND.length) return;'),
+        ('if (st.top === 3) { var live', 'if (st.top === TAB_KIND.length) { var live'),
+        ('else if (st.top === 4) {', 'else if (st.top === TAB_KIND.length + 1) {'),
+        ('else if (st.top === 6) VoKinoSearch.open();', 'else if (st.top === TAB_KIND.length + 3) VoKinoSearch.open();'),
+        ('st.top = Data.hasKey() ? st.tab : 3;', 'st.top = Data.hasKey() ? st.tab : TAB_KIND.length;'),
+        ('Math.max(Data.hasKey() ? 0 : 3, Math.min(6, st.top + dx))', 'Math.max(Data.hasKey() ? 0 : TAB_KIND.length, Math.min(TAB_KIND.length + 3, st.top + dx))'),
+        ('if (st.top < 3) selectTab(st.top);', 'if (st.top < TAB_KIND.length) selectTab(st.top);'),
+        ('st.top < 3 ? 0 : cards.length - 1', 'st.top < TAB_KIND.length ? 0 : cards.length - 1'),
+        ('index < 3 && !Data.hasKey()', 'index < TAB_KIND.length && !Data.hasKey()'),
+        ('if (index < 3) selectTab(index);', 'if (index < TAB_KIND.length) selectTab(index);'),
+        ("return st.zone === 'dock-style' ||", "return st.zone === 'vokino-sections' || st.zone === 'dock-style' ||"),
+        ('function closeSheets() {', 'function closeSheets() {\n    if (window.VoKinoSections) VoKinoSections.close(false);'),
+        ("      {label: tr('Picks per tab'),", "      {label: 'Разделы VoKino', value: '›', sections: true, step: function (d) { if (d >= 0) VoKinoSections.open(); }},\n      {label: tr('Picks per tab'),"),
+        ('var list = Data.picks(TAB_KIND[st.tab]);', 'var list = Data.picks(TAB_KIND[st.tab]);\n    VoKinoSections.refreshEmpty(TAB_KIND[st.tab], list.length);\n    VoKinoSections.reveal(st.tab);'),
+        ('if (window.FavoriteControls) FavoriteControls.update();', 'if (window.FavoriteControls) FavoriteControls.update();\n    VoKinoSections.reveal(st.tab);'),
+        ('state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, refreshVoKinoTabs: refreshVoKinoTabs, showSectionSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].sections) st.row = i; updateFocus(); },'),
+    ]
+    for old, new in replacements:
+        home = replace_once(home, old, new, 'dynamic VoKino sections: ' + old[:60])
+    return replace_once(home, '  function selectTab(i) {', '''  function refreshVoKinoTabs() {
+    var key = TAB_KIND[st.tab];
+    TAB_KIND = VoKinoSections.tabs().map(function (t) { return t.key; });
+    st.tab = Math.max(0, TAB_KIND.indexOf(key));
+    if (st.zone === Z.TOP) st.top = st.tab;
+    cards = []; renderTop(); renderCards(); updateFocus();
+  }
+
+  function selectTab(i) {''', 'refresh visible tabs after section edits')

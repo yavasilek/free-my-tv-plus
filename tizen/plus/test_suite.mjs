@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+const sectionsCode = fs.readFileSync(new URL('./vokino-sections.js', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./compact-adapter.js', import.meta.url), 'utf8');
 function row(id, extra = {}) {return {details: {id, type: 'movie', name: 'Example',
   poster: 'https://proxy.vokino.org/image/t/p/w600_and_h900_bestv2/example.jpg',
@@ -29,7 +30,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false)
       return {ok: true, json: async () => ({type: 'list', channels})};
     },
   };
-  box.window = box; vm.createContext(box); vm.runInContext(code, box);
+  box.window = box; vm.createContext(box); vm.runInContext(sectionsCode, box); vm.runInContext(code, box);
   return {box, store, requests, launches, timers, prefs};
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
@@ -65,7 +66,7 @@ assert.equal(b.box.VoKinoBridge.turnPage('vokino-history', -1), true);
 assert.equal(b.box.Data.picks('vokino-history').length, 2);
 assert.equal(b.box.VoKinoBridge.turnPage('vokino-history', -1), false);
 for (const req of b.requests) {assert.equal(req.options.redirect, 'error'); assert.equal(req.options.credentials, 'omit');}
-assert.equal(b.store.get('fmtv.vokino.feed.v4').includes(account.token), false, 'Feed cache must never contain credentials');
+assert.equal(b.store.get('fmtv.vokino.feed.v5').includes(account.token), false, 'Feed cache must never contain credentials');
 b.box.document.hidden = true; b.box.VoKinoBridge.refresh(true); await flush(); assert.equal(b.requests.length, 2);
 b.box.TV.launch('bridge-vokino:' + id1, null, ok => assert.equal(ok, true));
 assert.equal(JSON.parse(b.launches[0].control.data[0].value[0]).values, 'https://api.vokino.org/v2/view/' + id1);
@@ -176,3 +177,45 @@ nativeTube.box.TV.launch('9Ur5IzDKqV.TizenYouTube',null,()=>{});await flush();
 assert.equal(nativeTube.launches[0],'9Ur5IzDKqV.TizenYouTube','An explicitly selected stock YouTube favorite must not be redirected to TizenTube');
 assert.equal(nativeTube.requests[1].url,'http://127.0.0.1:8099/watch/app?appId=9Ur5IzDKqV.TizenYouTube');
 const keepNative=boot({'fmtv.youtube.favorite.rev':'1'},false,16,true);assert.equal(keepNative.prefs.shelf[0],'9Ur5IzDKqV.TizenYouTube','Subsequent starts preserve a later stock YouTube choice');
+
+const configured=boot({'fmtv.vokino.account':JSON.stringify(account)},false,16);
+const sections=configured.box.VoKinoSections;
+sections.enable('new',true);sections.overview('new',true);sections.overview('history',false);sections.overview('favorites',false);
+configured.box.VoKinoBridge.refresh(true);await flush();
+assert.equal(configured.requests.length,3,'Fetch only the three enabled sources');
+assert.ok(configured.box.Data.picks(null).every(p=>p.section==='new'),'Overview only contains selected enabled sources');
+assert.equal(configured.requests.filter(r=>new URL(r.url).pathname.endsWith('/list')&&!r.url.includes('/timeline/')).every(r=>!new URL(r.url).searchParams.has('token')),true,'Public lists never receive the private token');
+sections.enable('history',false);sections.enable('favorites',false);configured.requests.length=0;
+configured.box.VoKinoBridge.refresh(true);await flush();assert.equal(configured.requests.length,1);assert.ok(configured.requests[0].url.includes('sort=new'));
+sections.enable('continue',true);sections.overview('continue',true);
+configured.box.VoKinoBridge.refresh(true);await flush();
+assert.ok(configured.box.Data.picks('vokino-continue').every(p=>p.resume));
+assert.equal(configured.box.Data.picks(null)[0].section,'history');
+sections.move('new',-1);sections.move('new',-1);
+assert.equal(configured.box.Data.picks(null)[0].section,'new','Overview interleaving follows the configured section order');
+assert.equal(new Set(configured.box.Data.picks(null).map(p=>p.id)).size,configured.box.Data.picks(null).length,'Overview deduplicates titles shared by selected sources');
+sections.overview('new',false);sections.enable('continue',false);
+assert.equal(configured.box.Data.picks(null).length,0,'An empty selection must not silently inject popular titles');
+assert.equal(sections.overview('continue',true),false,'A disabled source cannot contribute to Overview');
+sections.enable('new',false);configured.requests.length=0;configured.box.VoKinoBridge.refresh(true);await flush();
+assert.equal(configured.requests.length,0,'Disabling every section performs no feed requests');
+configured.box.VoKinoBridge.refresh(false);assert.equal(configured.requests.length,0,'A successfully loaded empty selection remains fresh');
+const restoredSections=boot(Object.fromEntries(configured.store),false,16);
+assert.equal(restoredSections.box.VoKinoSections.tabs().length,1,'Hidden sections stay hidden after restart');
+assert.equal(restoredSections.box.Data.picks(null).length,0);
+const invalidSections=boot({'fmtv.vokino.sections.v1':JSON.stringify({order:['constructor','new','new','foreign'],enabled:['new','foreign'],overview:['new','favorites']})});
+assert.deepEqual(Array.from(invalidSections.box.VoKinoSections.tabs(),t=>t.key),[null,'vokino-new']);
+assert.equal(invalidSections.box.VoKinoSections.all().find(d=>d.id==='favorites').overview,false);
+const legacy=boot({'fmtv.vokino.account':JSON.stringify(account),'fmtv.vokino.feed.v4':b.store.get('fmtv.vokino.feed.v5')});
+assert.ok(legacy.box.Data.picks(null).length);legacy.box.VoKinoBridge.refresh(false);await flush();assert.equal(legacy.requests.length,2,'Legacy cache is visible immediately and refreshed into v5');
+const filtered=boot();filtered.box.VoKinoSections.enable('popular',false);filtered.box.VoKinoSections.enable('movies',true);filtered.box.VoKinoSections.overview('movies',true);
+filtered.box.fetch=async(url,options)=>{filtered.requests.push({url,options});const second=new URL(url).searchParams.get('page')==='2';return {ok:true,json:async()=>({type:'list',channels:Array.from({length:12},(_,i)=>row((i+(second?20:1)).toString(16).padStart(24,'0'))),page:{next:second?null:'https://api.vokino.pro/v2/list?page=2&type=anime&sort=rating&token=UNTRUSTED'}})};};
+filtered.box.VoKinoBridge.refresh(true);await flush();await flush();
+assert.equal(new URL(filtered.requests[1].url).searchParams.get('type'),'movie');assert.equal(new URL(filtered.requests[1].url).searchParams.get('sort'),'popular');assert.equal(new URL(filtered.requests[1].url).searchParams.has('token'),false);
+const bounded=boot({'fmtv.vokino.account':JSON.stringify(account)},false,16);bounded.box.VoKinoSections.all().forEach(d=>bounded.box.VoKinoSections.enable(d.id,true));
+let inflight=0,peak=0;
+bounded.box.fetch=(url,options)=>{bounded.requests.push({url,options});inflight++;peak=Math.max(peak,inflight);return new Promise(resolve=>setImmediate(()=>{inflight--;resolve({ok:true,json:async()=>({type:'list',channels:[row(id1,{current:100,time:1000})],page:{}})});}));};
+bounded.box.VoKinoBridge.refresh(true);for(let i=0;i<30&&bounded.box.VoKinoBridge.inFlight;i++)await flush();
+assert.equal(bounded.box.VoKinoBridge.inFlight,false);assert.ok(peak<=2,'Section loading cannot exceed two concurrent source requests');
+assert.equal(bounded.requests.filter(r=>r.url.includes('/timeline/')).length,1,'Continue and History share one API fetch');
+console.log('Passed: section visibility/order, explicit Overview sources, deduplication, empty selection, persistence, v4 migration, filter-safe pagination and bounded concurrent loading.');

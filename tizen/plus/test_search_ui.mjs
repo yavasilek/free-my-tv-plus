@@ -72,7 +72,7 @@ try{
   await key(13);assert.equal(await page.eval('window.__launches.at(-1).id'),'UMHvZ0dWqo.AnalogWatch');
   const restored=await page.eval(()=>{const saved=VoKinoBridge.takeReturnSelection();VoKinoSearch.close(false);VoKinoSearch.restore(saved.search);return {cursor:VoKinoSearch.selection().cursor,zone:FreeMyTV.state.zone};});
   assert.equal(restored.cursor,7);assert.equal(restored.zone,'vokino-search');
-  await key(10009);assert.equal(await page.eval('VoKinoSearch.isOpen()'),false);assert.equal(await page.eval('FreeMyTV.state.top'),6);
+  await key(10009);assert.equal(await page.eval('VoKinoSearch.isOpen()'),false);assert.equal(await page.eval('FreeMyTV.state.top'),await page.eval('VoKinoSections.tabs().length+3'));
   const closedCalls=await page.eval('window.__searchCalls');
   await page.eval(()=>{document.getElementById('vokino-search-query').value='Интерстеллар';});
   await sleep(650);assert.equal(await page.eval('window.__searchCalls'),closedCalls,'Stop observing text when the search dialog closes');
@@ -83,12 +83,15 @@ try{
   const fixtures=JSON.parse(fs.readFileSync(path.join(root,'out/plus-tests/public-search-fixtures.json'),'utf8'));
   await full.route(/https:\/\/api\.vokino\.(pro|co|org|tv)\//,route=>{
     const url=new URL(route.request().url());
-    const fixture=fixtures[(url.searchParams.get('name')||'Матрица')+':1'];
+    let fixture=fixtures[(url.searchParams.get('name')||'Матрица')+':1'];
+    if(url.searchParams.get('sort')==='new'){
+      fixture=structuredClone(fixture);fixture.channels.forEach((r,i)=>{r.details.id=(2000+i).toString(16).padStart(24,'0');r.details.name='Новинка '+i;});
+    }
     return route.fulfill({json:fixture||{type:'list',channels:[],page:{}}});
   });
   await full.goto('http://127.0.0.1:'+server.address().port+'/out/tizen-plus/index.html');
   await full.waitForFunction(()=>window.FreeMyTV&&document.querySelectorAll('#buttons .round').length===4);
-  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=6;FreeMyTV.activate();});
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+3;FreeMyTV.activate();});
   await full.waitForFunction(()=>VoKinoSearch.isOpen()&&document.activeElement.id==='vokino-search-query');
   await full.setViewport({width:1920,height:568});
   await full.locator('#vokino-search-query').fill('Матрица');
@@ -129,7 +132,7 @@ try{
   await full.keyboard.down('Enter');await sleep(950);await full.keyboard.up('Enter');
   assert.equal(await full.eval(()=>window.__favoriteLaunches.length),1,'Holding OK while idle wakes the screen without opening a movie');
   assert.equal(await full.eval(()=>document.getElementById('ambient').classList.contains('on')),false);
-  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=5;FreeMyTV.activate();});
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+2;FreeMyTV.activate();});
   const dockSettingsIndex=await full.eval(()=>Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent.includes('Оформление дока')));
   assert.ok(dockSettingsIndex>=0,'Dock appearance is reachable through Home Settings');
   await full.eval(index=>{FreeMyTV.state.row=index;FreeMyTV.activate();},dockSettingsIndex);
@@ -163,8 +166,43 @@ try{
   await full.keyboard.press('Escape');await full.keyboard.press('Escape');
   assert.equal(await full.eval(()=>FreeMyTV.state.zone),'shelf');
   await full.screenshot({path:path.join(root,'out/plus-tests/dock-default.png')});
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+2;FreeMyTV.activate();});
+  const sectionsIndex=await full.eval(()=>Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent.includes('Разделы VoKino')));
+  assert.ok(sectionsIndex>=0);
+  await full.eval(i=>{FreeMyTV.state.row=i;FreeMyTV.activate();},sectionsIndex);
+  assert.equal(await full.eval(()=>VoKinoSections.isOpen()),true);
+  for(let i=0;i<4;i++)await full.keyboard.press('ArrowDown');
+  await full.keyboard.press('Enter'); // Show New.
+  await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter'); // Include New in Overview.
+  await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter'); // Move New.
+  await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
+  assert.deepEqual(await full.eval(()=>VoKinoSections.tabs().map(t=>t.name)),['Обзор','Новинки','Популярное']);
+  await full.waitForFunction(()=>!VoKinoBridge.inFlight&&Data.picks('vokino-new').length===12);
+  assert.equal(await full.eval(()=>Data.picks(null)[0].section),'new');
+  await full.screenshot({path:path.join(root,'out/plus-tests/sections.png')});
+  await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter'); // Keep New visible but outside Overview.
+  assert.ok(await full.eval(()=>Data.picks(null).every(p=>p.section==='popular')));
+  await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter'); // Hide New.
+  assert.deepEqual(await full.eval(()=>VoKinoSections.tabs().map(t=>t.name)),['Обзор','Популярное']);
+  await full.keyboard.press('Escape');
+  assert.equal(await full.eval(()=>FreeMyTV.state.row),sectionsIndex);
+  await full.reload();await full.waitForFunction(()=>window.FreeMyTV&&window.VoKinoSections);
+  assert.equal(await full.eval(()=>VoKinoSections.all().find(d=>d.id==='new').enabled),false);
+  assert.equal(await full.eval(()=>VoKinoSections.all()[3].id),'new','Section order persists even while the section is hidden');
+  await full.eval(()=>['new','updates','rating','movies','series','cartoons','anime'].forEach(id=>VoKinoSections.enable(id,true)));
+  const tabCount=await full.eval(()=>VoKinoSections.tabs().length);
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=0;FreeMyTV.move(0,0);});
+  for(let i=1;i<tabCount;i++)await full.keyboard.press('ArrowRight');
+  assert.ok(await full.eval(()=>document.getElementById('tabs').scrollLeft>0),'Long tab strips reveal the focused tab');
+  assert.ok(await full.eval(()=>{const strip=document.getElementById('tabs'),tab=strip.children[FreeMyTV.state.top];return tab.getBoundingClientRect().right<=strip.getBoundingClientRect().right+1;}));
+  for(let i=0;i<4;i++)await full.keyboard.press('ArrowRight');
+  await full.keyboard.press('Enter');
+  assert.equal(await full.eval(()=>VoKinoSearch.isOpen()),true,'Search remains reachable after changing the number of tabs');
+  await full.eval(()=>VoKinoSearch.close());await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter');
+  assert.equal(await full.eval(()=>FreeMyTV.state.zone),'settings','Settings remain reachable after changing the number of tabs');
+  await full.keyboard.press('Escape');
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','Overview selection','long tab strip','dynamic search/settings indices']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);

@@ -108,7 +108,7 @@
     opened = false; stopValueWatch(); clearTimeout(typingTimer); typingTimer = 0; input.blur(); modal.classList.remove('open'); bridge.cancelSearch();
     window.dispatchEvent(new Event('resize'));
     if (restore !== false && window.FreeMyTV) {
-      FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = 6; FreeMyTV.move(0, 0); touch();
+      FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = window.VoKinoSections ? VoKinoSections.tabs().length + 3 : 6; FreeMyTV.move(0, 0); touch();
     }
   }
   function activate() {

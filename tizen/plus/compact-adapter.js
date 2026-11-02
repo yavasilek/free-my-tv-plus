@@ -4,7 +4,7 @@
   if (window.VoKinoBridge) return;
   var PUBLIC_BASE = 'https://api.vokino.pro/v2';
   var ALLOWED = ['https://api.vokino.pro/v2', 'https://api.vokino.co/v2', 'https://api.vokino.org/v2', 'https://api.vokino.tv/v2'];
-  var CACHE = 'fmtv.vokino.feed.v4', ACCOUNT = 'fmtv.vokino.account';
+  var CACHE = 'fmtv.vokino.feed.v5', ACCOUNT = 'fmtv.vokino.account';
   var SEARCH = 'fmtv.vokino.search.v1', searchSeq = 0, searchAbort = null;
   var prefix = 'bridge-vokino:', appId = 'UMHvZ0dWqo.AnalogWatch';
   var youtubeId = 'xvvl3S1TT1.TizenTubeStandalone';
@@ -12,7 +12,7 @@
   var favoriteIds = [];
   var original = {picks: Data.picks, hasKey: Data.hasKey, image: Data.image,
     appFor: Data.appFor, showcase: Data.showcase, launch: TV.launch};
-  var bridge = window.VoKinoBridge = {version: '0.9', items: [], error: '', lastAction: null, inFlight: false, offsets: {},
+  var bridge = window.VoKinoBridge = {version: '1.0', items: [], error: '', lastAction: null, inFlight: false, offsets: {},
     searchState: {query: '', page: 1, items: [], nextPage: 0, loading: false, error: ''}};
 
   function stored(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
@@ -30,41 +30,55 @@
   bridge.fromSource = function (row, section) {
     var d = row && row.details, kind = d && (d.type === 'movie' ? 'movie' : d.type === 'serial' ? 'tv' : '');
     var types = {movie: 'Фильм', serial: 'Сериал', multfilm: 'Мультфильм', multserial: 'Мультсериал', documovie: 'Документальный фильм', docuserial: 'Документальный сериал', tvshow: 'ТВ-шоу', anime: 'Аниме'};
-    if (section === 'search' && d && types[d.type]) kind = ['serial', 'multserial', 'docuserial', 'tvshow'].indexOf(d.type) >= 0 ? 'tv' : 'movie';
+    if (d && types[d.type]) kind = ['serial', 'multserial', 'docuserial', 'tvshow'].indexOf(d.type) >= 0 ? 'tv' : 'movie';
     if (!d || !kind || !/^[a-f0-9]{24}$/.test(String(d.id)) || !d.name) return null;
     var progress = Number(d.time) > 0 ? Number(d.current) / Number(d.time) : 0;
     if (section === 'resume' && !(Number(d.current) >= 20 && progress > 0 && progress < 0.95)) return null;
     var resume = Number(d.current) >= 20 && progress > 0 && progress < 0.95;
-    var label = section === 'resume' || (section === 'history' && resume) ? 'Продолжить (' + Math.round(progress * 100) + '%)' : section === 'favorites' ? 'Избранное' : section === 'history' ? 'История' : section === 'search' ? types[d.type] : '';
+    var def = VoKinoSections.definition(section);
+    var label = section === 'resume' || (section === 'history' && resume) ? 'Продолжить (' + Math.round(progress * 100) + '%)' : section === 'search' ? types[d.type] : def ? def.name : '';
     var poster = d.poster || '', back = d.bg_poster && d.bg_poster.backdrop || poster;
     var p = {id: 'vokino:' + d.id, app: prefix + d.id, kind: kind, section: section || 'popular', resume: resume,
       title: String(d.name).slice(0, 180), meta: [label, d.released || '', 'VoKino'].filter(function (x) { return !!x; }).join(' · '),
       poster: poster || back, backdrop: back};
     return valid(p) ? p : null;
   };
-  bridge.accept = function (items, generatedAt, accountKey) {
+  function selectionStamp() { return VoKinoSections.sources().map(function (d) { return d.id; }).sort().join(','); }
+  bridge.accept = function (items, generatedAt, accountKey, selectedSources) {
     var seen = {};
-    items = items.filter(function (p) { var key = p.section + ':' + p.id; if (!valid(p) || seen[key]) return false; seen[key] = true; return true; }).slice(0, 32);
-    if (!items.length) throw new Error('No usable cards');
+    items = items.filter(function (p) { var key = p.section + ':' + p.id; if (!valid(p) || seen[key]) return false; seen[key] = true; return true; }).slice(0, 256);
     bridge.items = items; bridge.generatedAt = generatedAt || Date.now() / 1000;
     bridge.accountKey = accountKey || owner(); bridge.error = '';
-    try { localStorage.setItem(CACHE, JSON.stringify({items: items, generatedAt: bridge.generatedAt, accountKey: bridge.accountKey})); } catch (e) {}
+    bridge.selectedSources = selectedSources === undefined ? selectionStamp() : selectedSources;
+    try { localStorage.setItem(CACHE, JSON.stringify({items: items, generatedAt: bridge.generatedAt, accountKey: bridge.accountKey, selectedSources: bridge.selectedSources})); } catch (e) {}
     Data.settingsChanged();
   };
   function fresh() {
-    return bridge.items.length && bridge.accountKey === owner() && Date.now() / 1000 - bridge.generatedAt < (account() ? 300 : 3600);
+    return bridge.generatedAt && bridge.selectedSources === selectionStamp() && bridge.accountKey === owner() && Date.now() / 1000 - bridge.generatedAt < (account() ? 300 : 3600);
   }
-  Data.hasKey = function () { return !!bridge.items.length || original.hasKey(); };
+  Data.hasKey = function () { return true; };
   function count() { return Math.max(1, Math.min(16, Prefs.cards())); }
   function collection(kind) {
-    if (kind === 'vokino-history') return bridge.items.filter(function (p) { return p.section === 'history' || p.section === 'resume'; });
-    if (kind === 'vokino-favorites') return bridge.items.filter(function (p) { return p.section === 'favorites'; });
-    var history = bridge.items.filter(function (p) { return p.section === 'resume' || (p.section === 'history' && p.resume); });
-    var favorites = bridge.items.filter(function (p) { return p.section === 'favorites'; });
-    var mixed = [], seen = {};
+    if (bridge.accountKey && bridge.accountKey !== owner()) return [];
+    var choices = VoKinoSections.all();
+    function section(id) {
+      if (!choices.some(function (d) { return d.id === id && d.enabled; })) return [];
+      return bridge.items.filter(function (p) {
+        return id === 'continue' ? (p.section === 'history' || p.section === 'resume') && p.resume :
+          id === 'history' ? p.section === 'history' || p.section === 'resume' : p.section === id;
+      });
+    }
+    if (kind && kind.indexOf('vokino-') === 0) return section(kind.slice(7));
+    var groups = [], remaining = [], mixed = [], seen = {}, longest = 0;
+    choices.forEach(function (d) {
+      if (!d.overview) return;
+      var list = section(d.id);
+      if (d.id === 'history') { remaining = remaining.concat(list.filter(function (p) { return !p.resume; })); list = list.filter(function (p) { return p.resume; }); }
+      groups.push(list); longest = Math.max(longest, list.length);
+    });
     function add(p) { if (p && !seen[p.id]) { seen[p.id] = true; mixed.push(p); } }
-    for (var i = 0; i < Math.max(history.length, favorites.length); i++) { add(history[i]); add(favorites[i]); }
-    bridge.items.forEach(add);
+    for (var i = 0; i < longest; i++) groups.forEach(function (list) { add(list[i]); });
+    remaining.forEach(add);
     return mixed.filter(function (p) { return !kind || p.kind === kind; });
   }
   bridge.resetPage = function (kind) { bridge.offsets[kind || 'overview'] = 0; };
@@ -75,17 +89,16 @@
     bridge.offsets[key] = next; return true;
   };
   Data.picks = function (kind) {
-    if (!bridge.items.length) return original.picks(kind);
     var rows = collection(kind), key = kind || 'overview', offset = bridge.offsets[key] || 0;
     if (offset >= rows.length) offset = bridge.offsets[key] = 0;
     return rows.slice(offset, offset + count()).map(function (p, i) {
-      if (kind !== 'vokino-history' && kind !== 'vokino-favorites') return p;
+      if (!kind || kind.indexOf('vokino-') !== 0) return p;
       var copy = {}; Object.keys(p).forEach(function (k) { copy[k] = p[k]; });
       copy.meta += ' · ' + (offset + i + 1) + ' / ' + rows.length;
       return copy;
     });
   };
-  Data.showcase = function () { return bridge.items.length ? Data.picks(null) : original.showcase(); };
+  Data.showcase = function () { return Data.picks(null); };
   Data.image = function (path, size) {
     if (!/^https:\/\/(?:proxy\.vokino\.(?:pro|co|org|tv)|image\.tmdb\.org)\//.test(path || '')) return original.image(path, size);
     var wanted = size === 'w300' ? 'w185' : size === 'w342' ? 'w342' : 'w780';
@@ -105,16 +118,19 @@
   function rememberSelection() {
     try {
       var s = window.FreeMyTV && FreeMyTV.state;
-      if (s) localStorage.setItem('fmtv.return.selection', JSON.stringify({tab: s.tab, card: s.card, shelf: s.shelf, zone: s.zone, offsets: bridge.offsets,
+      if (s) localStorage.setItem('fmtv.return.selection', JSON.stringify({tab: s.tab, tabKey: VoKinoSections.tabs()[s.tab] ? VoKinoSections.tabs()[s.tab].key : null, card: s.card, shelf: s.shelf, zone: s.zone, offsets: bridge.offsets,
         search: window.VoKinoSearch ? VoKinoSearch.selection() : null}));
     } catch (e) {}
   }
   bridge.takeReturnSelection = function () {
     var s = stored('fmtv.return.selection');
     try { localStorage.removeItem('fmtv.return.selection'); } catch (e) {}
-    if (!(s && s.tab >= 0 && s.tab <= 2 && s.card >= 0 && s.card <= 15)) return null;
+    if (!(s && s.tab >= 0 && s.card >= 0 && s.card <= 15)) return null;
+    var tabs = VoKinoSections.tabs();
+    if (s.tabKey !== undefined) { s.tab = 0; tabs.forEach(function (t, i) { if (t.key === s.tabKey) s.tab = i; }); }
+    s.tab = Math.min(tabs.length - 1, Math.floor(s.tab));
     var offsets = {};
-    ['overview', 'vokino-history', 'vokino-favorites'].forEach(function (k) { var n = s.offsets && s.offsets[k]; if (n >= 0 && n <= 32) offsets[k] = n; });
+    ['overview'].concat(VoKinoSections.all().map(function (d) { return 'vokino-' + d.id; })).forEach(function (k) { var n = s.offsets && s.offsets[k]; if (n >= 0 && n <= 256) offsets[k] = n; });
     s.offsets = offsets; return s;
   };
   function syncFavorites(done) { signal('/favorites?ids=' + encodeURIComponent(JSON.stringify(favoriteIds)), done); }
@@ -177,7 +193,8 @@
       if (url.host !== b.host || (url.protocol !== 'https:' && url.protocol !== 'http:') || url.pathname !== current.pathname) return '';
       var page = url.searchParams.get('page');
       if (!/^[1-9][0-9]{0,3}$/.test(page || '')) return '';
-      var filter = current.searchParams.get('sort') === 'popular' ? '&sort=popular' : '';
+      var filter = '';
+      ['sort', 'type'].forEach(function (key) { var value = current.searchParams.get(key); if (value) filter += '&' + key + '=' + encodeURIComponent(value); });
       if (current.pathname === b.pathname + '/search') filter += '&name=' + encodeURIComponent(current.searchParams.get('name') || '');
       return url.pathname.slice(b.pathname.length) + '?page=' + page + filter;
     } catch (e) { return ''; }
@@ -209,6 +226,7 @@
   function getFeed(base, path, token, section, done) {
     var items = [], seen = {}, visited = {}, pages = 0;
     function load(page) {
+      if (!VoKinoSections.sources().some(function (d) { return d.id === section; })) { done(null, items); return; }
       visited[page] = true; pages++;
       get(base, page, token, function (err, rows, next) {
         if (err) { done(items.length ? null : err, items); return; }
@@ -222,24 +240,42 @@
   bridge.refresh = function (force) {
     if (bridge.inFlight || document.hidden || (!force && fresh())) return;
     bridge.inFlight = true;
-    var a = account(), stamp = owner();
-    function finish(err, items) {
+    var a = account(), stamp = owner(), selectedSources = selectionStamp();
+    var wanted = VoKinoSections.sources(), results = {}, active = 0, at = 0, completed = 0, successes = 0;
+    if (bridge.accountKey && bridge.accountKey !== stamp) { bridge.items = []; bridge.generatedAt = 0; }
+    bridge.error = ''; Data.settingsChanged();
+    function finish() {
       bridge.inFlight = false;
-      if (stamp !== owner()) return;
-      if (err) { bridge.error = 'Catalog unavailable'; return; }
-      try { bridge.accept(items, Date.now() / 1000, stamp); } catch (e) { bridge.error = 'No available cards'; }
+      if (stamp === owner()) {
+        if (!wanted.length || successes) {
+          var items = [];
+          wanted.forEach(function (d) { items = items.concat(results[d.id] || bridge.items.filter(function (p) { return p.section === d.id; })); });
+          bridge.accept(items, Date.now() / 1000, stamp, selectedSources);
+        } else { bridge.error = 'Catalog unavailable'; Data.settingsChanged(); }
+      }
+      if (bridge.sectionsDirty || stamp !== owner() || selectionStamp() !== selectedSources) {
+        bridge.sectionsDirty = false; setTimeout(function () { bridge.refresh(false); }, 0);
+      }
     }
-    function popular() { getFeed(PUBLIC_BASE, '/list?sort=popular', '', 'popular', function (err, items) { finish(err, items); }); }
-    if (!a) { popular(); return; }
-    var waiting = 2, history = [], favorites = [], successes = 0;
-    function completed() {
-      if (--waiting) return;
-      if (!successes) { finish(new Error('Personal feed unavailable')); return; }
-      var items = history.concat(favorites);
-      if (!items.length) popular(); else finish(null, items);
+    function pump() {
+      if (completed === wanted.length) { finish(); return; }
+      while (active < 2 && at < wanted.length) (function (d) {
+        active++;
+        function done(err, items) {
+          if (!err) { results[d.id] = items; successes++; }
+          active--; completed++; pump();
+        }
+        if (stamp !== owner() || !VoKinoSections.sources().some(function (current) { return current.id === d.id; }) || (d.personal && !a)) done(null, []);
+        else getFeed(d.personal ? a.base : PUBLIC_BASE, d.path, d.personal ? a.token : '', d.id, done);
+      })(wanted[at++]);
     }
-    getFeed(a.base, '/timeline/list', a.token, 'history', function (err, items) { if (!err) { successes++; history = items; } completed(); });
-    getFeed(a.base, '/bookmarks/bookmark_list', a.token, 'favorites', function (err, items) { if (!err) { successes++; favorites = items; } completed(); });
+    pump();
+  };
+  bridge.sectionsChanged = function () {
+    bridge.offsets = {};
+    if (bridge.inFlight) bridge.sectionsDirty = true;
+    else if (!fresh()) setTimeout(function () { bridge.refresh(false); }, 150);
+    Data.settingsChanged();
   };
   function schedule() { if (!document.hidden && !fresh()) setTimeout(function () { bridge.refresh(false); }, 1600); }
   try {
@@ -254,8 +290,9 @@
     if (!localStorage.getItem('fmtv.compact.rev')) { Prefs.set('cards', 2); localStorage.setItem('fmtv.compact.rev', '1'); }
     if (!localStorage.getItem('fmtv.cards16.rev')) { Prefs.set('cards', 16); localStorage.setItem('fmtv.cards16.rev', '1'); }
     var cached = stored(CACHE);
+    if (!cached) { cached = stored('fmtv.vokino.feed.v4'); if (cached) cached.selectedSources = 'legacy'; }
     if (!cached) { cached = stored('fmtv.vokino.feed.v3'); if (cached) cached.generatedAt = 1; }
-    if (cached && cached.accountKey === owner()) bridge.accept(cached.items, cached.generatedAt, cached.accountKey);
+    if (cached && Array.isArray(cached.items) && cached.accountKey === owner()) bridge.accept(cached.items, cached.generatedAt, cached.accountKey, cached.selectedSources);
     var search = stored(SEARCH);
     if (search && typeof search.query === 'string' && search.query.length <= 120 && Date.now() - search.savedAt < 86400000 && Array.isArray(search.items)) {
       bridge.searchState = {query: search.query, page: Math.max(1, Math.min(9999, Number(search.page) || 1)),

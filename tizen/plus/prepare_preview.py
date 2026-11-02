@@ -42,7 +42,7 @@ window.tizen={application:{getAppInfo:function(){throw new Error('No native serv
 window.FreeMyTV={state:{zone:'top',top:6,tab:0,card:0,shelf:0},hideSaver:function(){},poke:function(){},move:function(){}};
 function fit(){var s=window.VoKinoSearch&&VoKinoSearch.isOpen()?innerWidth/1920:Math.min(innerWidth/1920,innerHeight/1080);document.getElementById('stage').style.transform=s===1?'':'scale('+s+')';}
 window.addEventListener('resize',fit);
-</script><script src="../../tizen/plus/compact-adapter.js"></script><script src="../../tizen/plus/vokino-search.js"></script>
+</script><script src="../../tizen/plus/vokino-sections.js"></script><script src="../../tizen/plus/compact-adapter.js"></script><script src="../../tizen/plus/vokino-search.js"></script>
 <script>document.addEventListener('keydown',function(){window.__homeKeys++;});
 window.__readyPromise=fixtures.then(function(){return new Promise(function(resolve){VoKinoBridge.search('Матрица',1,function(){VoKinoSearch.restore({cursor:0});resolve(true);});});});
 </script></body></html>''', encoding='utf-8')

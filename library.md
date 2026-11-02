@@ -1,4 +1,4 @@
-- IF working on Free My TV Plus for Samsung, VoKino search, personal feeds, favorites order, hold-OK editing, dock colors and transparency, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
+- IF working on Free My TV Plus for Samsung, VoKino search, personal feeds, configurable sections and Overview, favorites order, hold-OK editing, dock colors and transparency, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
 - IF working on the original cross-platform Free My TV builds -> read [[CLAUDE.md]]
 - IF reading the Russian project overview and quick build instructions -> read [[README.md]]
 - IF consulting the preserved original Free My TV installation documentation -> read [[README.upstream.md]]
