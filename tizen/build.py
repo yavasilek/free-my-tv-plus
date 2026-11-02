@@ -60,7 +60,7 @@ def sign(profile):
         sys.exit('The package came back without its signatures.')
 
 
-def build(preview, config, profile):
+def build(preview, config, profile, plus=False):
     with open(os.path.join(ROOT, 'tizen', 'config.xml'), encoding='utf-8') as f:
         manifest = f.read()
     app_id = re.search(r'<tizen:application id="([^"]+)"', manifest).group(1)
@@ -70,6 +70,10 @@ def build(preview, config, profile):
         with open(os.path.join(ROOT, 'tizen', name), 'rb') as f:
             app[name] = f.read()
 
+    if plus:
+        from plus.overlay import apply
+        app = apply(app)
+
     with zipfile.ZipFile(WGT, 'w', zipfile.ZIP_DEFLATED) as z:
         for path in sorted(app):
             z.writestr(path, app[path])
@@ -78,14 +82,17 @@ def build(preview, config, profile):
 
     if preview:
         webapp.preview(app, OUT)
-        print('Preview: open out/tizen/index.html (or serve out/tizen) in a browser.')
+        print('Preview: open %s/index.html (or serve that directory) in a browser.' % os.path.relpath(OUT, ROOT))
     print('Built %s (%s %s, %d KB, %s)' % (os.path.basename(WGT), app_id, version, os.path.getsize(WGT) // 1024,
                                            'signed with "%s"' % profile if profile else 'not signed'))
-    if not config['tmdbKey']:
+    if not config['tmdbKey'] and not plus:
         print('No TMDB key built in: the picks come once one is typed on the TV (Home Settings > TMDB key).')
 
 
 if __name__ == '__main__':
     args = sys.argv[1:]
     profile = args[args.index('--sign') + 1] if '--sign' in args else None
-    build('--preview' in args, webapp.config_from_args(args), profile)
+    if '--plus' in args:
+        WGT = os.path.join(ROOT, 'FreeMyTV-Plus-tizen.wgt')
+        OUT = os.path.join(ROOT, 'out', 'tizen-plus')
+    build('--preview' in args, webapp.config_from_args(args), profile, '--plus' in args)

@@ -1,0 +1,22 @@
+name: Tizen Plus
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  plus:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: python3 tizen/build.py --plus --generic --preview
+      - run: python3 tizen/plus/test_build.py
+      - run: node tizen/plus/test_suite.mjs
+      - run: node tizen/plus/test_autostart.mjs
+      - run: npm ci --prefix tizen/plus
+      - run: npx --prefix tizen/plus playwright install --with-deps chromium
+      - run: npm test --prefix tizen/plus

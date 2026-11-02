@@ -1,0 +1,14 @@
+/* AU7170: use the existing lite mode and keep an inexpensive focus indicator. */
+.lite .card { will-change: transform; }
+.lite .card.focus {
+  -webkit-transform: translateY(-6px);
+  transform: translateY(-6px);
+}
+.lite .card .img::after {
+  box-shadow: none;
+  background: none;
+  border: 3px solid rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
+  -webkit-transition: none;
+  transition: none;
+}

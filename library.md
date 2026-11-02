@@ -1,0 +1,2 @@
+- IF working on Free My TV Plus for Samsung, VoKino search, personal feeds, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
+- IF working on the original cross-platform Free My TV builds -> read [[CLAUDE.md]]

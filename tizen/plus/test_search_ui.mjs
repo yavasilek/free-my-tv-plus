@@ -1,0 +1,102 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {spawnSync} from 'node:child_process';
+import {chromium} from 'playwright';
+import {createServer} from 'node:http';
+import assert from 'node:assert/strict';
+const here=path.dirname(fileURLToPath(import.meta.url));
+const root=path.resolve(here,'../..');
+const prepared=spawnSync(process.env.PYTHON || (process.platform==='win32'?'python':'python3'),[path.join(here,'prepare_preview.py')],{stdio:'inherit'});
+assert.equal(prepared.status,0);
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const Browser={async launch(){
+  const browser=await chromium.launch(process.env.CHROME_PATH?{executablePath:process.env.CHROME_PATH}:{});
+  const create=browser.newPage.bind(browser);
+  browser.newPage=async({width,height})=>{
+    const page=await create({viewport:{width,height}}),session=await page.context().newCDPSession(page);
+    page.eval=page.evaluate.bind(page);page.send=session.send.bind(session);page.setViewport=page.setViewportSize.bind(page);
+    page.consoleErrors=[];page.on('pageerror',error=>page.consoleErrors.push(error.message));
+    await page.route('https://**',route=>route.abort());
+    return page;
+  };
+  return browser;
+}};
+const server=createServer((req,res)=>{
+  const f=path.resolve(root,'.'+decodeURIComponent(new URL(req.url,'http://localhost').pathname));
+  if(!f.startsWith(root+path.sep)){res.writeHead(403);res.end();return;}
+  try{const data=fs.readFileSync(f),types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.ttf':'font/ttf'};res.writeHead(200,{'Content-Type':types[path.extname(f)]||'application/octet-stream'});res.end(data);}catch{res.writeHead(404);res.end();}
+});
+await new Promise(r=>server.listen(0,'127.0.0.1',r));
+const browser=await Browser.launch({width:1920,height:1080});
+try{
+  const page=await browser.newPage({width:1920,height:1080});
+  await page.goto('http://127.0.0.1:'+server.address().port+'/out/plus-tests/preview.html');
+  await page.eval('window.__readyPromise');
+  const key=async(code)=>page.eval(n=>document.dispatchEvent(new KeyboardEvent('keydown',{keyCode:n,bubbles:true})),code);
+  const type=async(text)=>{await page.eval(()=>{const f=document.getElementById('vokino-search-query');f.focus();f.value='';f.dispatchEvent(new Event('input',{bubbles:true}));});await page.send('Input.insertText',{text});await sleep(650);};
+  const first=await page.eval('({count:VoKinoBridge.searchState.items.length,visible:document.querySelectorAll(".search-result").length})');
+  assert.ok(first.count>5);assert.equal(first.visible,5);
+  await page.screenshot({path:path.join(root,'out/plus-tests/results.png'),format:'png'});
+  await page.setViewport({width:1920,height:568});
+  await page.eval(()=>{
+    const f=document.getElementById('vokino-search-query');f.focus();f.value='';f.dispatchEvent(new Event('input',{bubbles:true}));
+    f.dispatchEvent(new CompositionEvent('compositionstart',{bubbles:true}));
+    f.value='Интерстеллар';f.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertCompositionText',isComposing:true,data:'Интерстеллар'}));
+  });
+  await sleep(650);
+  assert.equal(await page.eval('VoKinoBridge.searchState.query'),'Интерстеллар','First word must search while the native IME composition remains open');
+  const callsBeforeCommit=await page.eval('window.__searchCalls');
+  await page.eval(()=>document.getElementById('vokino-search-query').dispatchEvent(new CompositionEvent('compositionend',{bubbles:true})));
+  await sleep(550);assert.equal(await page.eval('window.__searchCalls'),callsBeforeCommit,'Composition commit must not duplicate a completed live search');
+  await page.eval(()=>{const f=document.getElementById('vokino-search-query');f.value='';f.dispatchEvent(new Event('input',{bubbles:true}));f.value='Матрица';});
+  await sleep(850);
+  assert.equal(await page.eval('VoKinoBridge.searchState.query'),'Матрица','Detect native keyboard value updates even when input events are missing');
+  assert.equal(await page.eval('VoKinoBridge.searchState.error'),'');
+  await type('Интерстеллар');
+  const live=await page.eval(()=>{const box=document.querySelector('#vokino-search .box').getBoundingClientRect();return {count:VoKinoBridge.searchState.items.length,focused:document.activeElement.id,width:box.width,bottom:box.bottom,rows:document.querySelectorAll('.search-result').length};});
+  assert.ok(live.count>0);assert.equal(live.focused,'vokino-search-query');assert.equal(live.width,1220);assert.ok(live.bottom<=568);assert.equal(live.rows,2);
+  await page.screenshot({path:path.join(root,'out/plus-tests/keyboard.png'),format:'png'});
+  await type('пусто');assert.equal(await page.eval('VoKinoBridge.searchState.items.length'),0);
+  assert.match(await page.eval('document.querySelector(".search-status").textContent'),/Ничего не найдено/);
+  await page.screenshot({path:path.join(root,'out/plus-tests/empty.png'),format:'png'});
+  await type('ошибка');assert.match(await page.eval('document.querySelector(".search-status").textContent'),/Не удалось/);
+  await page.screenshot({path:path.join(root,'out/plus-tests/error.png'),format:'png'});
+  await type('Человек');await key(65376);await page.setViewport({width:1920,height:1080});
+  assert.equal(await page.eval('VoKinoBridge.searchState.nextPage'),2);
+  await key(39);await sleep(80);assert.equal(await page.eval('VoKinoBridge.searchState.page'),2);
+  await key(37);await sleep(80);assert.equal(await page.eval('VoKinoBridge.searchState.page'),1);
+  await type('Матрица');await key(65376);
+  for(let i=0;i<7;i++)await key(40);
+  assert.equal(await page.eval('VoKinoSearch.selection().cursor'),7);assert.equal(await page.eval('document.querySelectorAll(".search-result").length'),5);
+  await key(13);assert.equal(await page.eval('window.__launches.at(-1).id'),'UMHvZ0dWqo.AnalogWatch');
+  const restored=await page.eval(()=>{const saved=VoKinoBridge.takeReturnSelection();VoKinoSearch.close(false);VoKinoSearch.restore(saved.search);return {cursor:VoKinoSearch.selection().cursor,zone:FreeMyTV.state.zone};});
+  assert.equal(restored.cursor,7);assert.equal(restored.zone,'vokino-search');
+  await key(10009);assert.equal(await page.eval('VoKinoSearch.isOpen()'),false);assert.equal(await page.eval('FreeMyTV.state.top'),6);
+  const closedCalls=await page.eval('window.__searchCalls');
+  await page.eval(()=>{document.getElementById('vokino-search-query').value='Интерстеллар';});
+  await sleep(650);assert.equal(await page.eval('window.__searchCalls'),closedCalls,'Stop observing text when the search dialog closes');
+  assert.equal(await page.eval('window.__homeKeys'),0,'Search keys must not also navigate the home screen');
+  assert.deepEqual(page.consoleErrors,[]);
+  // Smoke-test the actual built launcher, in addition to the focused IME fixture.
+  const full=await browser.newPage({width:1920,height:1080});
+  const fixtures=JSON.parse(fs.readFileSync(path.join(root,'out/plus-tests/public-search-fixtures.json'),'utf8'));
+  await full.route(/https:\/\/api\.vokino\.(pro|co|org|tv)\//,route=>{
+    const url=new URL(route.request().url());
+    const fixture=fixtures[(url.searchParams.get('name')||'Матрица')+':1'];
+    return route.fulfill({json:fixture||{type:'list',channels:[],page:{}}});
+  });
+  await full.goto('http://127.0.0.1:'+server.address().port+'/out/tizen-plus/index.html');
+  await full.waitForFunction(()=>window.FreeMyTV&&document.querySelectorAll('#buttons .round').length===4);
+  await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=6;FreeMyTV.activate();});
+  await full.waitForFunction(()=>VoKinoSearch.isOpen()&&document.activeElement.id==='vokino-search-query');
+  await full.setViewport({width:1920,height:568});
+  await full.locator('#vokino-search-query').fill('Матрица');
+  await full.waitForFunction(()=>VoKinoBridge.searchState.items.length===12);
+  assert.equal(await full.eval(()=>document.querySelector('#vokino-search .box').getBoundingClientRect().width),1220);
+  assert.equal(await full.eval(()=>Prefs.cards()),16);
+  assert.deepEqual(full.consoleErrors,[]);
+  await full.close();
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close']}));
+}finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
+process.exit(0);
