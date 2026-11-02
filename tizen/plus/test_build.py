@@ -36,6 +36,8 @@ class BuildTests(unittest.TestCase):
         self.assertIn(b'VoKinoBridge.turnPage', app['home.js'])
         self.assertIn(b'class="lite"', app['index.html'])
         self.assertIn(b'favorites.js', app['index.html'])
+        self.assertIn(b'dock-style.js', app['index.html'])
+        self.assertIn(b'dock-style.css', app['index.html'])
         self.assertIn(b'VoKinoBridge.setFavorites', app['home.js'])
         self.assertIn(b'function openShelfEdit(selectedId)', app['home.js'])
         with self.assertRaises(ValueError):

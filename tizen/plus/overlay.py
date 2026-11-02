@@ -20,8 +20,9 @@ def apply(files):
     index = replace_once(files['index.html'].decode('utf-8'), '<script src="home.js"></script>',
                          '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
+    index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="home.js"></script>', 'dock styling entry point')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
-                         '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">', 'performance stylesheet')
+                         '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">', 'performance stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
         "cards: function () { var n = pick('cards', 3); return n < 3 ? 3 : n > 6 ? 6 : n; }",
         "cards: function () { var n = pick('cards', 16); return n < 1 ? 1 : n > 16 ? 16 : n; }", 'card count')
@@ -46,11 +47,13 @@ def apply(files):
     home = replace_once(home, 'Math.min(5, st.top + dx)', 'Math.min(6, st.top + dx)', 'search button remote focus')
     home = replace_once(home, 'else openSettings();\n        return;\n      case Z.CARDS:',
         'else if (st.top === 6) VoKinoSearch.open();\n        else openSettings();\n        return;\n      case Z.CARDS:', 'open search from remote')
-    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'vokino-search' || ", 'search blocks screensaver')
-    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close search with sheets')
+    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'dock-style' || st.zone === 'vokino-search' || ", 'custom panels block screensaver')
+    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.DockStyle) DockStyle.close(false);\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close custom panels with sheets')
     home = replace_once(home, 'hideSaver: hideSaver, toast: toast', 'hideSaver: hideSaver, toast: toast, poke: poke', 'search activity resets idle timer')
     home = replace_once(home, 'shelf = out;', 'shelf = out;\n    VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));', 'synchronize favorite app targets')
     home = replace_once(home, "label: tr('Shelf'), value:", "label: 'Избранные приложения', value:", 'favorites setting name')
+    home = replace_once(home, "      {label: tr('Dim'), value: dimName(),",
+        "      {label: 'Оформление дока', value: '›', dockStyle: true, step: function (d) { if (d >= 0) DockStyle.open(); }},\n      {label: tr('Dim'), value: dimName(),", 'dock appearance next to theme setting')
     home = replace_once(home, "title.appendChild(document.createTextNode(tr('Shelf')));",
         "title.appendChild(document.createTextNode('Избранные приложения'));", 'favorites editor title')
     home = replace_once(home, "var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder, a.title);",
@@ -64,7 +67,7 @@ def apply(files):
         '    st.edit = 0;\n    editList().rows.forEach(function (a, i) { if (a.id === selectedId) st.edit = i; });\n    renderShelfEdit();', 'focus selected favorite')
     home = replace_once(home, '    revealShelf();', '    revealShelf();\n    if (window.FavoriteControls) FavoriteControls.update();', 'favorites help follows focus')
     home = replace_once(home, 'state: st, move: move, activate: activate,',
-        'state: st, move: move, activate: activate, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'remote favorites editor access')
+        'state: st, move: move, activate: activate, showDockSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].dockStyle) st.row = i; updateFocus(); }, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'custom settings and favorites editor access')
     home = replace_once(home, "var s = TV.name !== 'browser' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);",
         "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
     home = replace_once(home,
@@ -108,6 +111,8 @@ def apply(files):
                   'vokino-search.js': (ROOT / 'vokino-search.js').read_bytes(),
                   'vokino-search.css': (ROOT / 'vokino-search.css').read_bytes(),
                   'favorites.js': (ROOT / 'favorites.js').read_bytes(),
+                  'dock-style.js': (ROOT / 'dock-style.js').read_bytes(),
+                  'dock-style.css': (ROOT / 'dock-style.css').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files

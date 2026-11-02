@@ -1,0 +1,18 @@
+/* The frame is inset so 1.4x focus still fits the shelf's existing gaps. */
+#tiles .tile.focus::before, #tiles .tile.dock-preview::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 0; bottom: 0;
+  border: 3px solid #FFF; border-radius: inherit; box-sizing: border-box; z-index: 2; pointer-events: none;
+}
+#tiles .tile.dock-preview { -webkit-transform: translateY(-10px) scale(1.4); transform: translateY(-10px) scale(1.4); z-index: 2; }
+/* Leave the real dock undimmed while its colors and transparency are edited. */
+#dock-style { background: none; }
+.dock-style-box { position: absolute; left: 500px; top: 150px; width: 920px; padding: 30px; box-sizing: border-box; background: #111; border-radius: 32px; color: #FFF; }
+#dock-style h2 { position: static; margin: 0; text-align: left; font-size: 38px; line-height: 48px; font-weight: 600; }
+.dock-style-description { margin: 10px 0 24px; font-size: 24px; line-height: 32px; color: #b4b4b4; }
+.dock-style-row { display: block; position: relative; width: 100%; height: 70px; margin: 0 0 8px; padding: 0 24px; border: 0; border-radius: 20px; background: none; color: #FFF; font: inherit; font-size: 30px; text-align: left; }
+.dock-style-row.focus { background: #2a2a2a; }
+.dock-style-name { display: inline-block; max-width: 60%; white-space: nowrap; }
+.dock-style-value { position: absolute; right: 24px; top: 0; line-height: 70px; font-size: 28px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.dock-swatch { display: inline-block; width: 22px; height: 22px; margin-right: 14px; vertical-align: -2px; border-radius: 50%; border: 1px solid #949494; }
+.dock-style-footer { margin-top: 14px; font-size: 22px; line-height: 32px; color: #b4b4b4; }
+.dock-style-saved { float: right; }
