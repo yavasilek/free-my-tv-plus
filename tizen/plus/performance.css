@@ -1,5 +1,10 @@
 /* AU7170: use the existing lite mode and keep an inexpensive focus indicator. */
 .lite .card { will-change: transform; }
+/* At the maximum 224px tile width, 1.4x still fits the existing 48px gaps. */
+#tiles .tile.focus {
+  -webkit-transform: translateY(-10px) scale(1.4);
+  transform: translateY(-10px) scale(1.4);
+}
 .lite .card.focus {
   -webkit-transform: translateY(-6px);
   transform: translateY(-6px);
