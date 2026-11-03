@@ -26,20 +26,20 @@
   }
   function defaults() {
     var active = hasAccount() ? ['history', 'favorites'] : ['popular'];
-    return {order: definitions.map(function (d) { return d.id; }), enabled: active, overview: active.slice()};
+    return {order: definitions.map(function (d) { return d.id; }), enabled: active};
   }
   function normalize(value) {
-    if (!value || !Array.isArray(value.order) || !Array.isArray(value.enabled) || !Array.isArray(value.overview)) return defaults();
+    if (!value || !Array.isArray(value.order) || !Array.isArray(value.enabled)) return defaults();
     var order = [];
     value.order.concat(definitions.map(function (d) { return d.id; })).forEach(function (id) { if (definition(id) && order.indexOf(id) < 0) order.push(id); });
     var enabled = order.filter(function (id) { return value.enabled.indexOf(id) >= 0; });
-    return {order: order, enabled: enabled, overview: enabled.filter(function (id) { return value.overview.indexOf(id) >= 0; })};
+    return {order: order, enabled: enabled};
   }
   var settings;
   try { settings = normalize(JSON.parse(localStorage.getItem(KEY))); } catch (e) { settings = defaults(); }
   function rows() {
     return settings.order.map(function (id) { var d = definition(id); return {id: id, name: d.name, personal: !!d.personal,
-      enabled: settings.enabled.indexOf(id) >= 0, overview: settings.enabled.indexOf(id) >= 0 && settings.overview.indexOf(id) >= 0}; });
+      enabled: settings.enabled.indexOf(id) >= 0}; });
   }
   function tabs() { return [{key: null, name: 'Обзор'}].concat(rows().filter(function (d) { return d.enabled; }).map(function (d) { return {key: 'vokino-' + d.id, name: d.name}; })); }
   function sources() {
@@ -48,7 +48,8 @@
     return ids.map(definition);
   }
   function save() {
-    try { localStorage.setItem(KEY, JSON.stringify(settings)); if (stamp) stamp.textContent = 'Сохранено'; }
+    // Mirror enabled into the legacy field so older builds can still read the choices.
+    try { localStorage.setItem(KEY, JSON.stringify({order: settings.order, enabled: settings.enabled, overview: settings.enabled.slice()})); if (stamp) stamp.textContent = 'Сохранено'; }
     catch (e) { if (stamp) stamp.textContent = 'Не удалось сохранить'; }
     if (window.FreeMyTV && FreeMyTV.refreshVoKinoTabs) FreeMyTV.refreshVoKinoTabs();
     if (window.VoKinoBridge && VoKinoBridge.sectionsChanged) VoKinoBridge.sectionsChanged();
@@ -58,13 +59,6 @@
     if (!definition(id)) return false;
     settings.enabled = settings.enabled.filter(function (x) { return x !== id; });
     if (on) settings.enabled.push(id);
-    else settings.overview = settings.overview.filter(function (x) { return x !== id; });
-    save(); return true;
-  }
-  function overview(id, on) {
-    if (!definition(id) || settings.enabled.indexOf(id) < 0) return false;
-    settings.overview = settings.overview.filter(function (x) { return x !== id; });
-    if (on) settings.overview.push(id);
     save(); return true;
   }
   function move(id, direction) {
@@ -81,9 +75,9 @@
     modal = node('div', 'layer sheet', document.getElementById('stage')); modal.id = 'vokino-sections';
     modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'vokino-sections-title');
     var box = node('div', 'sections-box', modal), title = node('h2', '', box, 'Разделы VoKino'); title.id = 'vokino-sections-title';
-    node('div', 'sections-description', box, 'Выберите вкладки и источники Обзора');
+    node('div', 'sections-description', box, 'Все включенные разделы попадают в Обзор');
     var header = node('div', 'sections-header', box); node('span', 'section-name', header, 'Раздел');
-    node('span', 'section-toggle', header, 'Показывать'); node('span', 'section-toggle', header, 'В Обзоре'); node('span', 'section-order', header, 'Порядок');
+    node('span', 'section-toggle', header, 'Показывать'); node('span', 'section-order', header, 'Порядок');
     list = node('div', 'sections-list', box);
     hint = node('div', 'sections-hint', box); stamp = node('div', 'sections-stamp', box); stamp.setAttribute('aria-live', 'polite');
   }
@@ -94,24 +88,21 @@
     for (var i = first; i < Math.min(data.length, first + 7); i++) (function (index) {
       var d = data[index], row = node('div', 'sections-row' + (selected === index ? ' selected' : ''), list);
       node('span', 'section-name', row, d.name);
-      for (var j = 0; j < 3; j++) (function (action) {
-        var button = node('button', (action === 2 ? 'section-order' : 'section-toggle') + (selected === index && column === action ? ' focus' : ''), row,
-          action === 0 ? d.enabled ? 'Да' : 'Нет' : action === 1 ? !d.enabled ? '-' : d.overview ? 'Да' : 'Нет' : (index + 1) + (moving && selected === index ? ' ↑↓' : ' ↕'));
-        button.type = 'button'; button.setAttribute('aria-label', d.name + ': ' + ['показывать', 'в Обзоре', 'порядок'][action]);
-        if (action < 2) button.setAttribute('aria-pressed', (action === 0 ? d.enabled : d.overview) ? 'true' : 'false');
-        if (action === 1 && !d.enabled) { button.className += ' unavailable'; button.setAttribute('aria-disabled', 'true'); }
+      for (var j = 0; j < 2; j++) (function (action) {
+        var button = node('button', (action === 1 ? 'section-order' : 'section-toggle') + (selected === index && column === action ? ' focus' : ''), row,
+          action === 0 ? d.enabled ? 'Да' : 'Нет' : (index + 1) + (moving && selected === index ? ' ↑↓' : ' ↕'));
+        button.type = 'button'; button.setAttribute('aria-label', d.name + ': ' + ['показывать', 'порядок'][action]);
+        if (action === 0) button.setAttribute('aria-pressed', d.enabled ? 'true' : 'false');
         button.onmouseover = function () { if (!moving && (selected !== index || column !== action)) { selected = index; column = action; render(); } };
         button.onclick = function () { selected = index; column = action; activate(); };
       })(j);
     })(i);
     hint.textContent = moving ? '↑↓ - изменить порядок · OK - готово · Back - завершить' : '↑↓ - раздел · ←→ - действие · OK - выбрать · Back - закрыть';
-    if (!moving && column === 1 && !data[selected].enabled) hint.textContent = 'Сначала включите «Показывать» для этого раздела';
   }
   function activate() {
     if (moving) { moving = false; render(); return; }
     var d = rows()[selected];
     if (column === 0) enable(d.id, !d.enabled);
-    else if (column === 1) { if (d.enabled) overview(d.id, !d.overview); else render(); }
     else { moving = true; render(); }
   }
   function open() {
@@ -134,19 +125,19 @@
       var direction = k === TV.keys.down ? 1 : -1, next = Math.max(0, Math.min(settings.order.length - 1, selected + direction));
       if (moving && next !== selected) { var id = settings.order[selected]; selected = next; move(id, direction); }
       else { selected = next; render(); }
-    } else if (!moving && (k === TV.keys.left || k === TV.keys.right)) { column = Math.max(0, Math.min(2, column + (k === TV.keys.right ? 1 : -1))); render(); }
+    } else if (!moving && (k === TV.keys.left || k === TV.keys.right)) { column = Math.max(0, Math.min(1, column + (k === TV.keys.right ? 1 : -1))); render(); }
     else if (k === TV.keys.ok) activate();
     else if (k === TV.keys.back || k === 27 || k === 8) { if (moving) { moving = false; render(); } else close(); }
   }, true);
   window.VoKinoSections = {
     all: rows, definition: definition, tabs: tabs, sources: sources, hasAccount: hasAccount,
-    enable: enable, overview: overview, move: move, open: open, close: close,
+    enable: enable, move: move, open: open, close: close,
     refreshEmpty: function (key, count) {
       if (!empty) { empty = node('div', '', document.getElementById('stage')); empty.id = 'vokino-empty'; }
       empty.hidden = count > 0;
       var def = key && definition(key.slice(7));
       empty.textContent = window.VoKinoBridge && VoKinoBridge.inFlight ? 'Загружаем карточки...' :
-        key === null && !rows().some(function (d) { return d.overview; }) ? 'Выберите источники Обзора в настройках разделов VoKino' :
+        key === null && !rows().some(function (d) { return d.enabled; }) ? 'Включите разделы VoKino в настройках' :
         def && def.personal && !hasAccount() ? 'Для этого раздела нужен подключенный аккаунт VoKino' :
         window.VoKinoBridge && VoKinoBridge.error ? 'Не удалось обновить раздел. Попробуем позже.' : 'В этом разделе пока нет доступных карточек';
     },

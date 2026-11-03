@@ -173,16 +173,16 @@ try{
   assert.equal(await full.eval(()=>VoKinoSections.isOpen()),true);
   for(let i=0;i<4;i++)await full.keyboard.press('ArrowDown');
   await full.keyboard.press('Enter'); // Show New.
-  await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter'); // Include New in Overview.
+  assert.equal(await full.eval(()=>document.querySelector('.sections-header').textContent.includes('В Обзоре')),false,'No separate Overview opt-in remains');
   await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter'); // Move New.
   await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
   assert.deepEqual(await full.eval(()=>VoKinoSections.tabs().map(t=>t.name)),['Обзор','Новинки','Популярное']);
   await full.waitForFunction(()=>!VoKinoBridge.inFlight&&Data.picks('vokino-new').length===12);
   assert.equal(await full.eval(()=>Data.picks(null)[0].section),'new');
   await full.screenshot({path:path.join(root,'out/plus-tests/sections.png')});
-  await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter'); // Keep New visible but outside Overview.
-  assert.ok(await full.eval(()=>Data.picks(null).every(p=>p.section==='popular')));
+  assert.ok(await full.eval(()=>Data.picks(null).some(p=>p.section==='new')&&Data.picks(null).some(p=>p.section==='popular')),'Both enabled tabs automatically fill Overview');
   await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter'); // Hide New.
+  assert.ok(await full.eval(()=>Data.picks(null).every(p=>p.section==='popular')),'Hidden tab automatically leaves Overview');
   assert.deepEqual(await full.eval(()=>VoKinoSections.tabs().map(t=>t.name)),['Обзор','Популярное']);
   await full.keyboard.press('Escape');
   assert.equal(await full.eval(()=>FreeMyTV.state.row),sectionsIndex);
@@ -232,6 +232,6 @@ try{
   await full.keyboard.press('Escape');
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','Overview selection','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);

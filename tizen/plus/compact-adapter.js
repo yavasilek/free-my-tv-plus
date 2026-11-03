@@ -69,16 +69,15 @@
       });
     }
     if (kind && kind.indexOf('vokino-') === 0) return section(kind.slice(7));
-    var groups = [], remaining = [], mixed = [], seen = {}, longest = 0;
+    var groups = [], mixed = [], seen = {}, longest = 0;
     choices.forEach(function (d) {
-      if (!d.overview) return;
+      if (!d.enabled) return;
       var list = section(d.id);
-      if (d.id === 'history') { remaining = remaining.concat(list.filter(function (p) { return !p.resume; })); list = list.filter(function (p) { return p.resume; }); }
+      if (d.id === 'history') list = list.filter(function (p) { return p.resume; }).concat(list.filter(function (p) { return !p.resume; }));
       groups.push(list); longest = Math.max(longest, list.length);
     });
     function add(p) { if (p && !seen[p.id]) { seen[p.id] = true; mixed.push(p); } }
     for (var i = 0; i < longest; i++) groups.forEach(function (list) { add(list[i]); });
-    remaining.forEach(add);
     return mixed.filter(function (p) { return !kind || p.kind === kind; });
   }
   bridge.resetPage = function (kind) { bridge.offsets[kind || 'overview'] = 0; };
