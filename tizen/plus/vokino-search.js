@@ -1,7 +1,9 @@
 /* Remote-first search: native TV keyboard, five visible rows, no image effects. */
 (function () {
   'use strict';
-  var bridge = window.VoKinoBridge, opened = false, cursor = -2, first = -1, rendered = null;
+  window.createMovieSearch = function (options) {
+  var bridge = options.bridge, opened = false, cursor = -2, first = -1, rendered = null;
+  var prefix = options.id, service = options.name, where = options.where || service;
   var modal, input, submit, list, status, pageLabel, previous, next, rows = [], typingTimer = 0, valueWatcher = 0, observedValue = '', renderedCount = 0;
   function node(tag, cls, parent, value) {
     var e = document.createElement(tag); if (cls) e.className = cls;
@@ -12,12 +14,12 @@
   function focusClass(e, on) { e.classList.toggle('search-focus', on); }
   function build() {
     if (modal) return;
-    modal = node('div', 'layer sheet', document.getElementById('stage')); modal.id = 'vokino-search';
-    modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', 'vokino-search-title');
-    var box = node('div', 'box', modal), title = node('h2', 'search-title', box, 'Поиск VoKino'); title.id = 'vokino-search-title';
-    var label = node('label', 'search-label', box, 'Название фильма или сериала'); label.htmlFor = 'vokino-search-query';
+    modal = node('div', 'layer sheet movie-search', document.getElementById('stage')); modal.id = prefix;
+    modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', prefix + '-title');
+    var box = node('div', 'box', modal), title = node('h2', 'search-title', box, 'Поиск ' + service); title.id = prefix + '-title';
+    var label = node('label', 'search-label', box, 'Название фильма или сериала'); label.htmlFor = prefix + '-query';
     var form = node('div', 'search-form', box);
-    input = node('input', 'search-query', form); input.id = 'vokino-search-query'; input.type = 'text'; input.maxLength = 120;
+    input = node('input', 'search-query', form); input.id = prefix + '-query'; input.type = 'text'; input.maxLength = 120;
     input.placeholder = 'Например, Интерстеллар'; input.setAttribute('autocomplete', 'off'); input.setAttribute('spellcheck', 'false');
     input.onfocus = function () { cursor = -2; startValueWatch(); queueSearch(); paint(); };
     input.onblur = function () { stopValueWatch(); paint(); };
@@ -39,8 +41,8 @@
     var s = state(), compact = document.activeElement === input || window.innerHeight < 800, count = compact ? 2 : 5;
     modal.classList.toggle('search-editing', compact);
     var start = Math.max(0, Math.min(Math.max(0, s.items.length - count), Math.max(0, cursor - 2)));
-    status.textContent = s.loading || typingTimer ? 'Ищем в VoKino...' : s.error || (!s.query ? 'Введите минимум 2 символа - поиск начнется автоматически.' : !s.items.length ? 'Ничего не найдено. Попробуйте другое название.' : 'Результатов на странице: ' + s.items.length);
-    modal.setAttribute('aria-busy', s.loading ? 'true' : 'false');
+    status.textContent = s.opening ? 'Открываем в ' + where + '...' : s.loading || typingTimer ? 'Ищем в ' + where + '...' : s.error || (!s.query ? 'Введите минимум 2 символа - поиск начнется автоматически.' : !s.items.length ? 'Ничего не найдено. Попробуйте другое название.' : 'Результатов на странице: ' + s.items.length);
+    modal.setAttribute('aria-busy', s.loading || s.opening ? 'true' : 'false');
     submit.textContent = s.loading ? 'Ищем...' : 'Найти';
     previous.disabled = s.loading || s.page <= 1; next.disabled = s.loading || !s.nextPage;
     pageLabel.textContent = s.query ? 'Страница ' + s.page : '';
@@ -49,7 +51,7 @@
       var visible = Math.min(count, s.items.length - start); list.style.height = Math.max(1, visible) * 96 + 'px';
       for (var i = start; i < start + visible; i++) (function (index) {
         var p = s.items[index], row = node('button', 'search-result', list); row.type = 'button';
-        var poster = node('img', 'search-poster', row); poster.alt = ''; poster.src = Data.image(p.poster || p.backdrop, 'w300');
+        var poster = node('img', 'search-poster', row); poster.alt = ''; poster.src = options.image ? options.image(p) : Data.image(p.poster || p.backdrop, 'w300');
         var text = node('span', 'search-result-text', row); node('span', 'search-name', text, p.title); node('span', 'search-meta', text, p.meta);
         row.onclick = function () { cursor = index; activate(); };
         row.onmouseover = function () { if (document.activeElement !== input) { cursor = index; paint(); } };
@@ -93,7 +95,7 @@
   function open(selection, keyboard) {
     if (!window.FreeMyTV) return;
     build(); FreeMyTV.hideSaver(); touch(); opened = true;
-    FreeMyTV.state.zone = 'vokino-search';
+    FreeMyTV.state.zone = prefix;
     modal.classList.add('open'); input.value = state().query; observedValue = input.value;
     window.dispatchEvent(new Event('resize'));
     cursor = selection && typeof selection.cursor === 'number' ? Math.max(-2, Math.min(state().items.length - 1, selection.cursor)) : -2;
@@ -108,16 +110,17 @@
     opened = false; stopValueWatch(); clearTimeout(typingTimer); typingTimer = 0; input.blur(); modal.classList.remove('open'); bridge.cancelSearch();
     window.dispatchEvent(new Event('resize'));
     if (restore !== false && window.FreeMyTV) {
-      FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = window.VoKinoSections ? VoKinoSections.tabs().length + 3 : 6; FreeMyTV.move(0, 0); touch();
+      FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = (window.VoKinoSections ? VoKinoSections.tabs().length : 3) + options.slot; FreeMyTV.move(0, 0); touch();
     }
   }
   function activate() {
     var s = state(); touch();
     if (cursor === -2) { input.focus(); return; }
     if (cursor === -1) { run(1); return; }
-    if (s.loading) return;
+    if (s.loading || s.opening) return;
     if (cursor < s.items.length) {
-      var p = s.items[cursor]; if (p) TV.launch(p.app, null, function (ok) { if (!ok) { s.error = 'Не удалось открыть VoKino. Попробуйте еще раз.'; paint(); } });
+      var p = s.items[cursor]; if (p) (options.launch || function (item, done) { TV.launch(item.app, null, done); })(p, function (ok, error) { if (!ok) { s.error = error || 'Не удалось открыть ' + (options.appName || service) + '. Попробуйте еще раз.'; paint(); } });
+      paint();
     } else if (cursor === s.items.length && s.page > 1) run(s.page - 1);
     else if (cursor === s.items.length + 1 && s.nextPage) run(s.nextPage);
   }
@@ -152,11 +155,13 @@
     }
   }, true);
   window.addEventListener('resize', function () { if (opened) paint(); });
-  window.VoKinoSearch = {
+  return {
     revision: 2,
-    open: function () { open(null, true); }, close: close,
+    open: function () { if (options.allowed && !options.allowed()) return; open(null, true); }, close: close,
     restore: function (selection) { open(selection, false); },
     selection: function () { return opened ? {cursor: cursor} : null; },
     submit: function () { run(1); }, isOpen: function () { return opened; }
   };
+  };
+  window.VoKinoSearch = createMovieSearch({bridge: window.VoKinoBridge, id: 'vokino-search', name: 'VoKino', slot: 3});
 })();

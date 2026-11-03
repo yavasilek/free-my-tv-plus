@@ -118,7 +118,8 @@
     try {
       var s = window.FreeMyTV && FreeMyTV.state;
       if (s) localStorage.setItem('fmtv.return.selection', JSON.stringify({tab: s.tab, tabKey: VoKinoSections.tabs()[s.tab] ? VoKinoSections.tabs()[s.tab].key : null, card: s.card, shelf: s.shelf, zone: s.zone, offsets: bridge.offsets,
-        search: window.VoKinoSearch ? VoKinoSearch.selection() : null}));
+        search: window.VoKinoSearch ? VoKinoSearch.selection() : null,
+        kinopoiskSearch: window.KinopoiskSearch ? KinopoiskSearch.selection() : null}));
     } catch (e) {}
   }
   bridge.takeReturnSelection = function () {
@@ -152,6 +153,8 @@
       signal('/watch/app?appId=' + encodeURIComponent(id), start);
     });
   }
+  bridge.launchWithReturn = launchWithReturn;
+  bridge.cancelReturn = function () { signal('/cancel-watch'); };
   function notifyVisible() { if (!document.hidden) syncFavorites(function () { signal('/home-visible'); }); }
   TV.launch = function (id, params, done) {
     if (id === '9Ur5IzDKqV.TizenYouTube' && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeId) >= 0) id = youtubeId;

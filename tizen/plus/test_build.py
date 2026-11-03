@@ -38,6 +38,8 @@ class BuildTests(unittest.TestCase):
         self.assertIn(b'favorites.js', app['index.html'])
         self.assertIn(b'dock-style.js', app['index.html'])
         self.assertIn(b'top-controls.js', app['index.html'])
+        self.assertIn(b'kinopoisk-search.js', app['index.html'])
+        self.assertIn(b'KinopoiskSearch.restore(saved.kinopoiskSearch)', app['home.js'])
         self.assertIn(b'dock-style.css', app['index.html'])
         self.assertLess(app['index.html'].index(b'vokino-sections.js'), app['index.html'].index(b'vokino-adapter.js'))
         self.assertIn(b'vokino-sections.css', app['index.html'])
