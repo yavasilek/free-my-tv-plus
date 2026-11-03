@@ -11,7 +11,7 @@
     vokino: {name: 'VoKino', tabs: [{id: 'overview', name: 'Обзор'}].concat(VoKinoSections.all().map(function (d) { return {id: d.id, name: d.name}; }))},
     ivi: {name: 'Иви', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'movies', name: 'Фильмы', category: 14}, {id: 'series', name: 'Сериалы', category: 15}, {id: 'cartoons', name: 'Мультфильмы', category: 17}]},
     myshows: {name: 'MyShows', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'popular', name: 'Топ сериалов'},
-      {id: 'watching', name: 'Смотрю'}, {id: 'later', name: 'Буду смотреть'}, {id: 'finished', name: 'Просмотрено'}]}
+      {id: 'watching', name: 'Смотрю'}, {id: 'episodes', name: 'Новые серии'}, {id: 'later', name: 'Буду смотреть'}, {id: 'finished', name: 'Просмотрено'}]}
   };
   function known(id) { return Object.prototype.hasOwnProperty.call(defs, id); }
   function tab(service, id) { var rows = known(service) ? defs[service].tabs : []; for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i]; return null; }
@@ -26,7 +26,13 @@
   Object.keys(defs).forEach(function (id) {
     var value = saved && saved.tabs && saved.tabs[id], ids = defs[id].tabs.map(function (t) { return t.id; });
     var active = id === 'vokino' ? ['overview'].concat(VoKinoSections.all().filter(function (d) { return d.enabled; }).map(function (d) { return d.id; })) : id === 'kinopoisk' ? ['overview', 'popular', 'movies', 'series'] : id === 'myshows' ? ids : ['overview', 'movies', 'series'];
-    settings.tabs[id] = {order: order(value && value.order, ids), enabled: value && Array.isArray(value.enabled) ? value.enabled.filter(function (key) { return ids.indexOf(key) >= 0; }) : active};
+    var tabOrder = order(value && value.order, ids), tabEnabled = value && Array.isArray(value.enabled) ? value.enabled.filter(function (key) { return ids.indexOf(key) >= 0; }) : active;
+    if (id === 'myshows' && value && Array.isArray(value.order) && value.order.indexOf('episodes') < 0) {
+      tabOrder.splice(tabOrder.indexOf('episodes'), 1);
+      tabOrder.splice(tabOrder.indexOf('watching') + 1, 0, 'episodes');
+      if (tabEnabled.indexOf('episodes') < 0) tabEnabled.push('episodes');
+    }
+    settings.tabs[id] = {order: tabOrder, enabled: tabEnabled};
   });
   function services() { return settings.order.map(function (id) { return {id: id, name: defs[id].name, enabled: settings.enabled.indexOf(id) >= 0}; }); }
   function tabs(service, all) {

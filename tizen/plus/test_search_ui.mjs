@@ -103,7 +103,17 @@ try{
   });
   await full.route('https://st.kp.yandex.net/images/film_iphone/**',route=>route.fulfill({contentType:'image/svg+xml',body:coverSvg}));
   await full.route('https://api.myshows.ru/v2/rpc/',async route=>{
-    const {method,params,id}=route.request().postDataJSON();
+    const body=route.request().postDataJSON();
+    if(Array.isArray(body)){
+      const aired=(days)=>new Date(Date.now()-days*86400000).toISOString();
+      const episode=(id,number,days,extra)=>({id,showId:901,seasonNumber:2,episodeNumber:number,airDateUTC:aired(days),...extra});
+      myShowsCalls.push({method:'episodes-batch',ids:body.map(r=>r.params.showId),authorization:route.request().headers().authorization});
+      return route.fulfill({json:body.map(req=>({id:req.id,result:{id:req.params.showId,episodes:[
+        episode(87001,1,2),episode(87002,2,1),episode(87003,3,-1),episode(87004,4,31),
+        episode(87005,5,1,{isSpecial:true}),episode(87006,6,1,{showId:902})
+      ]}}))});
+    }
+    const {method,params,id}=body;
     myShowsCalls.push({method,params,authorization:route.request().headers().authorization});
     const show=(id,title)=>({id,title,year:2024,rating:4.6,image:'https://media.myshows.me/shows/small/fixture/'+id+'.jpg'});
     const profile=[
@@ -555,13 +565,24 @@ try{
   await full.waitForFunction(()=>CombinedSearch.isOpen()&&document.getElementById('combined-search-query').value==='Тьма');
   await full.keyboard.press('Escape');
   assert.deepEqual(await full.eval(()=>[CatalogHome.selection().service,CatalogHome.selection().choices.myshows.tab,FreeMyTV.state.zone]),['myshows','watching','catalog-cards']);
+  assert.equal(myShowsCalls.some(r=>r.method==='episodes-batch'),false,'The Overview does not start a batch of episode requests');
+  await full.keyboard.press('ArrowUp');await full.keyboard.press('ArrowRight');
+  await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===2);
+  const newEpisodes=await full.locator('[data-service="myshows"] .catalog-meta').allTextContents();
+  assert.match(newEpisodes[0],/^S02E02/);assert.match(newEpisodes[1],/^S02E01/);
+  assert.deepEqual(myShowsCalls.filter(r=>r.method==='episodes-batch').map(r=>r.ids),[[901]],'Only shows in Watching are included');
+  await full.keyboard.press('ArrowDown');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>CombinedSearch.isOpen()&&document.getElementById('combined-search-query').value==='Тьма');
+  await full.keyboard.press('Escape');
+  assert.equal(await full.eval(()=>CatalogHome.selection().choices.myshows.tab),'episodes');
   await openMyShows();
   await full.locator('#myshows-profile-login').fill('');
   await full.keyboard.press('Enter');await full.keyboard.press('Enter');
   await full.waitForFunction(()=>MyShowsCatalog.profile()===''&&FreeMyTV.state.zone==='settings');
   assert.equal(await full.eval(()=>MyShowsCatalog.items('watching').length),0);
+  assert.equal(await full.eval(()=>MyShowsCatalog.items('episodes').length),0);
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss','MyShows poster timeouts and exact-ID fallback']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss','MyShows poster timeouts and exact-ID fallback','MyShows recent episodes, ordering, lazy batching and profile isolation']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);

@@ -48,7 +48,7 @@
     if (service === 'myshows') {
       var items = tab === 'overview' ? mix(CatalogConfig.tabs(service).filter(function (t) {
         return t.id !== 'overview';
-      }).map(function (t) { return MyShowsCatalog.items(t.id); })) : MyShowsCatalog.items(tab);
+      }).map(function (t) { return t.id === 'episodes' ? MyShowsCatalog.recentInOverview() : MyShowsCatalog.items(t.id); })) : MyShowsCatalog.items(tab);
       return items.slice((page - 1) * Prefs.cards(), page * Prefs.cards());
     }
     if (service === 'vokino') return Data.picks(tab === 'overview' ? null : 'vokino-' + tab).map(function (p) { return {id: p.id, title: p.title, poster: p.poster, meta: p.meta, app: p.app}; });

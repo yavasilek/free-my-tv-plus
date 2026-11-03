@@ -8,12 +8,21 @@
   function feed() { return {items: {}, loading: false, error: '', at: 0}; }
   var top = feed(), profile = feed();
   function emit() { listeners.forEach(function (fn) { fn(); }); }
-  function rpc(method, params) {
+  function requestRpc(body) {
     var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 12000);
     return fetch(RPC, {method: 'POST', credentials: 'omit', redirect: 'error', signal: controller.signal,
       headers: {'Content-Type': 'application/json', 'Accept-Language': 'ru'},
-      body: JSON.stringify({jsonrpc: '2.0', method: method, params: params, id: 1})})
+      body: JSON.stringify(body)})
       .then(function (r) { if (!r.ok) throw new Error('Ошибка MyShows'); return r.json(); })
+      .then(function (result) { clearTimeout(timer); return result; }, function (error) {
+        clearTimeout(timer);
+        if (error.name === 'AbortError' || error.name === 'TypeError') throw new Error('MyShows временно недоступен.');
+        throw error;
+      });
+  }
+
+  function rpc(method, params) {
+    return requestRpc({jsonrpc: '2.0', method: method, params: params, id: 1})
       .then(function (data) {
         var valid = method === 'shows.GetById' ? data.result && Number(data.result.id) === params.showId : Array.isArray(data.result);
         if (data.error || !valid) {
@@ -22,10 +31,6 @@
             code === 404 ? 'Профиль MyShows не найден. Проверьте имя.' : 'MyShows временно недоступен.');
         }
         return data.result;
-      }).then(function (result) { clearTimeout(timer); return result; }, function (error) {
-        clearTimeout(timer);
-        if (error.name === 'AbortError' || error.name === 'TypeError') throw new Error('MyShows временно недоступен.');
-        throw error;
       });
   }
   var mediaRetryAt = 0, posterCache = new Map(), pendingPosters = {}, posterQueue = [], posterRequests = 0;
@@ -58,13 +63,13 @@
     function hide() { img.style.opacity = '0'; }
     function fallback() {
       img.onload = null; img.onerror = null; img.removeAttribute('src');
-      fallbackPoster(item.id).then(function (url) {
+      fallbackPoster(item.showId || item.id).then(function (url) {
         if (!document.documentElement.contains(img)) return;
         if (!url) { hide(); return; }
         img.onerror = hide; img.src = url;
       });
     }
-    var cached = posterCache.get(item.id);
+    var cached = posterCache.get(item.showId || item.id);
     if (!item.poster || Date.now() < mediaRetryAt || (cached && cached.url)) { fallback(); return; }
     var timeout = setTimeout(function () {
       // A stalled host also affects the next covers scrolled into view.
@@ -105,7 +110,63 @@
       .then(function () { current.at = Date.now(); current.loading = false; emit(); });
     return current;
   }
+  var recent = {items: [], at: 0, loading: false, failed: 0, ids: ''};
+
+  function episodeCard(episode, show, now) {
+    var id = String(episode && episode.id), season = Number(episode && episode.seasonNumber), number = Number(episode && episode.episodeNumber);
+    var aired = Date.parse(episode && (episode.airDateUTC || episode.airDate));
+    if (!/^[1-9][0-9]{0,9}$/.test(id) || String(episode.showId) !== show.id || episode.isSpecial ||
+        !Number.isInteger(season) || season < 1 || !Number.isInteger(number) || number < 1 ||
+        !(aired <= now && aired >= now - 30 * 86400000)) return null;
+    var code = 'S' + String(season).padStart(2, '0') + 'E' + String(number).padStart(2, '0');
+    return {id: 'episode:' + id, showId: show.id, title: show.title, poster: show.poster, aired: aired,
+      meta: code + ' · ' + new Date(aired).toLocaleDateString('ru-RU', {day: 'numeric', month: 'short'})};
+  }
+
+  function recentEpisodes() {
+    var source = load('watching'), shows = source.items.watching || [], now = Date.now();
+    if (!login || !shows.length) return [];
+    var ids = shows.map(function (show) { return show.id; }).sort().join(',');
+    if (recent.loading || (recent.ids === ids && now - recent.at < (recent.failed ? 120000 : ttl))) return recent.items;
+    var state = recent = {items: recent.items, at: 0, loading: true, failed: 0, ids: ids};
+    var cursor = 0, active = 0, found = new Map();
+
+    function collect(batch, response) {
+      var byId = new Map((Array.isArray(response) ? response : []).filter(Boolean).map(function (entry) { return [entry.id, entry]; }));
+      batch.forEach(function (show, i) {
+        var data = byId.get(i + 1), details = data && data.result;
+        if (!details || String(details.id) !== show.id || !Array.isArray(details.episodes)) { state.failed++; return; }
+        details.episodes.forEach(function (episode) {
+          var card = episodeCard(episode, show, now);
+          if (card) found.set(card.id, card);
+        });
+      });
+    }
+
+    function pump() {
+      if (state !== recent) return;
+      if (cursor === shows.length && !active) {
+        state.items = Array.from(found.values()).sort(function (a, b) { return b.aired - a.aired || a.title.localeCompare(b.title) || a.id.localeCompare(b.id); });
+        state.loading = false; state.at = Date.now(); emit(); return;
+      }
+      while (active < 2 && cursor < shows.length) (function (batch) {
+        cursor += batch.length; active++;
+        requestRpc(batch.map(function (show, i) {
+          return {jsonrpc: '2.0', id: i + 1, method: 'shows.GetById', params: {showId: Number(show.id), withEpisodes: true}};
+        })).then(function (response) { collect(batch, response); }, function () { state.failed += batch.length; })
+          .then(function () { active--; pump(); });
+      })(shows.slice(cursor, cursor + 6));
+    }
+    pump(); return state.items;
+  }
+
   function status(tab) {
+    if (tab === 'episodes' && login) {
+      var source = load('watching');
+      if (source.loading || recent.loading) return 'Загружаем новые серии…';
+      if (source.error) return source.error;
+      return recent.failed ? 'Не удалось проверить часть сериалов. Попробуйте позже.' : 'За последние 30 дней новых серий нет';
+    }
     if (tab !== 'popular' && !login) return 'Укажите имя в Настройки → Профиль MyShows';
     var current = load(tab);
     return current.loading ? 'Загружаем MyShows…' : current.error || 'В этом списке пока нет сериалов';
@@ -113,7 +174,7 @@
   function applyProfile(value, rows) {
     try { if (value) localStorage.setItem(KEY, value); else localStorage.removeItem(KEY); }
     catch (e) { throw new Error('Не удалось сохранить профиль на телевизоре.'); }
-    login = value; profile = feed();
+    login = value; profile = feed(); recent = {items: [], at: 0, loading: false, failed: 0, ids: ''};
     if (value) { profile.items = classify(rows, true); profile.at = Date.now(); }
     emit();
   }
@@ -185,7 +246,8 @@
   }, true);
   window.addEventListener('resize', function () { if (opened) paint(); });
   window.MyShowsCatalog = {
-    items: function (tab) { return load(tab).items[tab] || []; },
+    items: function (tab) { return tab === 'episodes' ? recentEpisodes() : load(tab).items[tab] || []; },
+    recentInOverview: function () { return recent.items; },
     loadPoster: loadPoster, status: status, onChange: function (fn) { listeners.push(fn); },
     profile: function () { return login; }, open: open, close: close
   };
