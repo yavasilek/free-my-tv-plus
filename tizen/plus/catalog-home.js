@@ -24,7 +24,14 @@
   function revealImages(id) {
     var view = elements[id]; if (!view || !view.cards) return;
     var left = view.cards.scrollLeft, width = view.cards.clientWidth;
-    [].forEach.call(view.cards.children, function (card) { var img = card.querySelector('img'); if (img && !img.getAttribute('src') && card.offsetLeft + card.offsetWidth >= left - 180 && card.offsetLeft <= left + width + 180) { var url = img.getAttribute('data-src'); if (url) img.src = url; } });
+    [].forEach.call(view.cards.children, function (card, index) {
+      var img = card.querySelector('img');
+      if (!img || !img.hasAttribute('data-src') || card.offsetLeft + card.offsetWidth < left - 180 || card.offsetLeft > left + width + 180) return;
+      var url = img.getAttribute('data-src');
+      img.removeAttribute('data-src');
+      if (id === 'myshows') MyShowsCatalog.loadPoster(img, view.items[index]);
+      else img.src = url;
+    });
   }
   function focus() {
     if (FreeMyTV.state.zone === 'top' && FreeMyTV.state.top >= oldTopCount() && TopControls.slots().indexOf(FreeMyTV.state.top - oldTopCount()) >= 0) lastUtility = FreeMyTV.state.top - oldTopCount();
@@ -70,7 +77,7 @@
         items.forEach(function (item, index) {
           var button = node('button', 'catalog-card', view.cards); button.type = 'button'; button.setAttribute('aria-label', item.title);
           var url = image(id, item);
-          if (url) {
+          if (url || id === 'myshows') {
             var poster = node('img', 'catalog-poster', button); poster.alt = ''; poster.setAttribute('data-src', url);
             poster.onerror = function () { this.style.opacity = '0'; };
           } else node('span', 'catalog-poster', button);

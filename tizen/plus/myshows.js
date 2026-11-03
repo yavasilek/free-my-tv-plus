@@ -15,7 +15,8 @@
       body: JSON.stringify({jsonrpc: '2.0', method: method, params: params, id: 1})})
       .then(function (r) { if (!r.ok) throw new Error('Ошибка MyShows'); return r.json(); })
       .then(function (data) {
-        if (data.error || !Array.isArray(data.result)) {
+        var valid = method === 'shows.GetById' ? data.result && Number(data.result.id) === params.showId : Array.isArray(data.result);
+        if (data.error || !valid) {
           var code = data.error && Number(data.error.code);
           throw new Error(code === 403 || code === 401 ? 'Профиль закрыт. Нужен открытый профиль MyShows.' :
             code === 404 ? 'Профиль MyShows не найден. Проверьте имя.' : 'MyShows временно недоступен.');
@@ -27,6 +28,53 @@
         throw error;
       });
   }
+  var mediaRetryAt = 0, posterCache = new Map(), pendingPosters = {}, posterQueue = [], posterRequests = 0;
+
+  function pumpPosters() {
+    while (posterRequests < 2 && posterQueue.length) (function (job) {
+      posterRequests++;
+      rpc('shows.GetById', {showId: Number(job.id), withEpisodes: false})
+        .then(function (show) {
+          var id = String(show.kinopoiskId || '');
+          return /^[1-9][0-9]{0,9}$/.test(id) ? 'https://st.kp.yandex.net/images/film_iphone/iphone360_' + id + '.jpg' : '';
+        }).catch(function () { return ''; }).then(function (url) {
+          if (posterCache.size >= 128) posterCache.delete(posterCache.keys().next().value);
+          posterCache.set(job.id, {url: url, retryAt: Date.now() + 120000});
+          delete pendingPosters[job.id]; posterRequests--;
+          job.resolve(url); pumpPosters();
+        });
+    })(posterQueue.shift());
+  }
+
+  function fallbackPoster(id) {
+    var cached = posterCache.get(id);
+    if (cached && (cached.url || Date.now() < cached.retryAt)) return Promise.resolve(cached.url);
+    if (pendingPosters[id]) return pendingPosters[id];
+    var promise = new Promise(function (resolve) { posterQueue.push({id: id, resolve: resolve}); });
+    pendingPosters[id] = promise; pumpPosters(); return promise;
+  }
+
+  function loadPoster(img, item) {
+    function hide() { img.style.opacity = '0'; }
+    function fallback() {
+      img.onload = null; img.onerror = null; img.removeAttribute('src');
+      fallbackPoster(item.id).then(function (url) {
+        if (!document.documentElement.contains(img)) return;
+        if (!url) { hide(); return; }
+        img.onerror = hide; img.src = url;
+      });
+    }
+    var cached = posterCache.get(item.id);
+    if (!item.poster || Date.now() < mediaRetryAt || (cached && cached.url)) { fallback(); return; }
+    var timeout = setTimeout(function () {
+      // A stalled host also affects the next covers scrolled into view.
+      mediaRetryAt = Date.now() + 300000; fallback();
+    }, 3000);
+    img.onload = function () { clearTimeout(timeout); img.onload = null; img.onerror = null; };
+    img.onerror = function () { clearTimeout(timeout); fallback(); };
+    img.src = item.poster;
+  }
+
   function item(entry, personal) {
     var show = entry && entry.show;
     if (!show || !/^[1-9][0-9]{0,9}$/.test(String(show.id)) || !(show.title || show.titleOriginal)) return null;
@@ -138,7 +186,7 @@
   window.addEventListener('resize', function () { if (opened) paint(); });
   window.MyShowsCatalog = {
     items: function (tab) { return load(tab).items[tab] || []; },
-    status: status, onChange: function (fn) { listeners.push(fn); },
+    loadPoster: loadPoster, status: status, onChange: function (fn) { listeners.push(fn); },
     profile: function () { return login; }, open: open, close: close
   };
 })();

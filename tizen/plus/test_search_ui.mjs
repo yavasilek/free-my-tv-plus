@@ -93,10 +93,19 @@ try{
     return route.fulfill({json:{films:q==='пусто'?[]:Array.from({length:20},(_,i)=>({filmId:page*100+i+1,nameRu:q+' '+i,year:'2024',rating:'7.5',posterUrlPreview:'https://kinopoiskapiunofficial.tech/images/posters/kp_small/fixture.jpg'})),pagesCount:q==='пусто'?0:2}});
   });
   const myShowsCalls=[];
-  await full.route('https://api.myshows.ru/v2/rpc/',route=>{
+  let posterLookups=0, peakPosterLookups=0;
+  const coverSvg='<svg xmlns="http://www.w3.org/2000/svg" width="360" height="540"><path fill="#516275" d="M0 0h360v540H0z"/></svg>';
+  await full.route('https://media.myshows.me/shows/**',async route=>{
+    const filename=new URL(route.request().url()).pathname.split('/').pop();
+    if(filename==='101.jpg')await sleep(4300);
+    if(['102.jpg','103.jpg','901.jpg'].includes(filename))return route.fulfill({status:503,body:''});
+    return route.fulfill({contentType:'image/svg+xml',body:coverSvg});
+  });
+  await full.route('https://st.kp.yandex.net/images/film_iphone/**',route=>route.fulfill({contentType:'image/svg+xml',body:coverSvg}));
+  await full.route('https://api.myshows.ru/v2/rpc/',async route=>{
     const {method,params,id}=route.request().postDataJSON();
     myShowsCalls.push({method,params,authorization:route.request().headers().authorization});
-    const show=(id,title)=>({id,title,year:2024,rating:4.6});
+    const show=(id,title)=>({id,title,year:2024,rating:4.6,image:'https://media.myshows.me/shows/small/fixture/'+id+'.jpg'});
     const profile=[
       {show:show(901,'Тьма'),watchStatus:'watching',watchedEpisodes:3,totalEpisodes:26},
       {show:show(902,'Разделение'),watchStatus:'later',watchedEpisodes:0,totalEpisodes:19},
@@ -106,7 +115,11 @@ try{
     const json={jsonrpc:'2.0',id};
     if(method==='shows.Top')json.result=Array.from({length:25},(_,i)=>({show:show(100+i,'Сериал '+i)}));
     else if(method==='profile.Shows'&&params.login==='public_demo')json.result=profile;
-    else json.error={code:403};
+    else if(method==='shows.GetById'){
+      posterLookups++;peakPosterLookups=Math.max(peakPosterLookups,posterLookups);
+      await sleep(80);posterLookups--;
+      json.result={id:params.showId,kinopoiskId:params.showId===103?null:params.showId+9000};
+    }else json.error={code:403};
     return route.fulfill({json});
   });
   const availabilityChecks=[];
@@ -499,6 +512,18 @@ try{
   await full.keyboard.press('Escape');
   await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===16);
   assert.equal(myShowsCalls.some(r=>r.method==='profile.Shows'),false,'No profile requests before a username is entered');
+  const countHealthyLookups=()=>myShowsCalls.filter(r=>r.method==='shows.GetById'&&r.params.showId===100).length;
+  const healthyBefore=countHealthyLookups();
+  await full.eval(()=>CatalogHome.focus('myshows','tabs'));
+  await full.waitForFunction(()=>{
+    const cards=Array.from(document.querySelectorAll('[data-service="myshows"] .catalog-card img'));
+    return cards[0].naturalWidth>0&&cards[1].naturalWidth>0&&cards[2].naturalWidth>0&&cards[3].style.opacity==='0';
+  });
+  const covers=await full.locator('[data-service="myshows"] .catalog-card img').evaluateAll(imgs=>imgs.slice(0,3).map(i=>i.src));
+  assert.match(covers[0],/^https:\/\/media\.myshows\.me\//,'Healthy MyShows covers stay on the original host');
+  assert.ok(covers[1].endsWith('iphone360_9101.jpg')&&covers[2].endsWith('iphone360_9102.jpg'),'Timeouts and errors use the exact Kinopoisk IDs');
+  assert.equal(countHealthyLookups(),healthyBefore,'A loaded original cover needs no lookup');
+  assert.ok(peakPosterLookups<=2,'Poster lookups are bounded');
   const openMyShows=async()=>{
     await openSettings();
     await full.eval(()=>{FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent.startsWith('Профиль MyShows'));FreeMyTV.activate();});
@@ -523,6 +548,8 @@ try{
   await full.eval(()=>CatalogHome.focus('myshows','tabs'));
   await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowDown');
   assert.match(await full.locator('[data-service="myshows"] .catalog-card.focus .catalog-meta').textContent(),/3\/26 серий/);
+  await full.waitForFunction(()=>document.querySelector('[data-service="myshows"] .catalog-card.focus img').naturalWidth>0);
+  assert.ok((await full.locator('[data-service="myshows"] .catalog-card.focus img').getAttribute('src')).endsWith('iphone360_9901.jpg'));
   await full.screenshot({path:path.join(root,'out/plus-tests/myshows-home.png')});
   await full.keyboard.press('Enter');
   await full.waitForFunction(()=>CombinedSearch.isOpen()&&document.getElementById('combined-search-query').value==='Тьма');
@@ -535,6 +562,6 @@ try{
   assert.equal(await full.eval(()=>MyShowsCatalog.items('watching').length),0);
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss','MyShows poster timeouts and exact-ID fallback']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);
