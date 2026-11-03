@@ -23,7 +23,8 @@
     availability.clear();
     try { if (value) localStorage.setItem(KEY, value); else localStorage.removeItem(KEY); localStorage.removeItem(CACHE); }
     catch (e) { return false; }
-    state.query = ''; state.items = []; state.error = ''; state.page = 1; state.nextPage = 0; return true;
+    state.query = ''; state.items = []; state.error = ''; state.page = 1; state.nextPage = 0;
+    if (window.CatalogFeeds) CatalogFeeds.reset('kinopoisk'); return true;
   }
   function search(query, page, done) {
     cancel(); var mine = seq;
@@ -150,7 +151,14 @@
     else if (code >= 37 && code <= 40) { e.preventDefault(); cursor = Math.max(0, Math.min(hasKey() ? 2 : 1, cursor + (code === 37 || code === 38 ? -1 : 1))); paintKey(); }
   }, true);
   window.addEventListener('resize', function () { if (keyOpen) paintKey(); });
-  window.KinopoiskCatalog = {searchState: state, search: search, cancelSearch: cancel, hasKey: hasKey, setKey: setKey, openKey: openKey, closeKey: closeKey};
+  function collection(type, page, signal) {
+    if (!hasKey() || ['TOP_POPULAR_ALL', 'TOP_POPULAR_MOVIES', 'POPULAR_SERIES', 'TOP_250_MOVIES', 'FAMILY', 'KIDS_ANIMATION_THEME', 'CLOSES_RELEASES'].indexOf(type) < 0) return Promise.reject(new Error('Добавьте ключ поиска Кинопоиска в настройках'));
+    page = Math.max(1, Math.min(50, Number(page) || 1));
+    return fetch(HOST + '/api/v2.2/films/collections?type=' + encodeURIComponent(type) + '&page=' + page, {headers: {'X-API-KEY': key(), 'Accept': 'application/json'}, credentials: 'omit', redirect: 'error', signal: signal})
+      .then(function (r) { if (!r.ok) { var error = new Error(r.status === 401 || r.status === 403 ? 'Проверьте ключ Кинопоиска' : r.status === 402 ? 'Лимит API Кинопоиска исчерпан' : 'Не удалось загрузить подборку'); error.status = r.status; throw error; } return r.json(); })
+      .then(function (data) { if (!Array.isArray(data.items)) throw new Error('Подборка недоступна'); return {items: data.items.map(function (r) { return normalize({filmId: r.kinopoiskId, nameRu: r.nameRu, nameEn: r.nameEn, posterUrlPreview: r.posterUrlPreview, posterUrl: r.posterUrl, type: r.type, year: r.year, rating: r.ratingKinopoisk}); }).filter(function (p) { return !!p; }), nextPage: page < Math.min(50, Number(data.totalPages) || 0) ? page + 1 : 0}; });
+  }
+  window.KinopoiskCatalog = {searchState: state, search: search, cancelSearch: cancel, hasKey: hasKey, setKey: setKey, openKey: openKey, closeKey: closeKey, collection: collection, launch: launch};
   window.KinopoiskSearch = createMovieSearch({bridge: KinopoiskCatalog, id: 'kinopoisk-search', name: 'Кинопоиска', where: 'Кинопоиске', appName: 'Кинопоиск', slot: 4,
     annotation: availability.annotation, visible: availability.visible,
     image: function (p) { return p.poster; }, launch: launch,

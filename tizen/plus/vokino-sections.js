@@ -53,6 +53,7 @@
     catch (e) { if (stamp) stamp.textContent = 'Не удалось сохранить'; }
     if (window.FreeMyTV && FreeMyTV.refreshVoKinoTabs) FreeMyTV.refreshVoKinoTabs();
     if (window.VoKinoBridge && VoKinoBridge.sectionsChanged) VoKinoBridge.sectionsChanged();
+    if (window.CatalogConfig && CatalogConfig.syncVoKino) CatalogConfig.syncVoKino();
     render();
   }
   function enable(id, on) {

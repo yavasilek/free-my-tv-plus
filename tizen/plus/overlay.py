@@ -22,8 +22,11 @@ def apply(files):
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
     index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="kinopoisk-availability.js"></script>\n<script src="kinopoisk-search.js"></script>\n<script src="ivi-search.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
+    index = replace_once(index, '<script src="home.js"></script>', '<script src="catalog-config.js"></script>\n<script src="catalog-feeds.js"></script>\n<script src="home.js"></script>', 'catalogue models before home')
+    index = replace_once(index, '<script src="favorites.js"></script>', '<script src="favorites.js"></script>\n<script src="catalog-home.js"></script>', 'service rows after launcher initialization')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
+    index = replace_once(index, '<link rel="stylesheet" href="vokino-sections.css">', '<link rel="stylesheet" href="vokino-sections.css">\n<link rel="stylesheet" href="catalog-home.css">', 'service-row stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
         "cards: function () { var n = pick('cards', 3); return n < 3 ? 3 : n > 6 ? 6 : n; }",
         "cards: function () { var n = pick('cards', 16); return n < 1 ? 1 : n > 16 ? 16 : n; }", 'card count')
@@ -32,7 +35,7 @@ def apply(files):
         '1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16', 'card count setting')
     home = replace_once(home,
         "Prefs.set('cards', 1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16); renderCards();",
-        "Prefs.set('cards', 1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16); VoKinoBridge.offsets = {}; renderCards();", 'reset pages after count change')
+        "Prefs.set('cards', 1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16); VoKinoBridge.offsets = {}; renderCards(); if (window.CatalogHome) CatalogHome.resetPages();", 'reset pages after count change')
     home = replace_once(home, "var TAB_KIND = [null, 'movie', 'tv'];",
         "var TAB_KIND = [null, 'vokino-history', 'vokino-favorites'];", 'personal tabs')
     home = replace_once(home, "var names = [tr('Explore'), tr('Movies'), tr('Shows')];",
@@ -80,6 +83,7 @@ def apply(files):
           } else st.card = Math.max(0, Math.min(cards.length - 1, st.card + dx));
         }''', 'bounded card page navigation')
     home = replace_once(home, 'function reset() {', '''function restoreSelection() {
+    if (!window.CatalogHome && document.readyState === 'loading') { document.addEventListener('DOMContentLoaded', restoreSelection, {once: true}); return; }
     if (!window.FreeMyTV) { setTimeout(restoreSelection, 0); return; }
     var saved = VoKinoBridge.takeReturnSelection();
     if (!saved) return;
@@ -91,6 +95,7 @@ def apply(files):
     if (saved.zone === 'vokino-search' && window.VoKinoSearch) VoKinoSearch.restore(saved.search);
     if (saved.zone === 'kinopoisk-search' && window.KinopoiskSearch && TopControls.kinopoiskApp()) KinopoiskSearch.restore(saved.kinopoiskSearch);
     if (saved.zone === 'ivi-search' && window.IviSearch && TopControls.iviApp()) IviSearch.restore(saved.iviSearch);
+    if ((saved.zone === 'catalog-tabs' || saved.zone === 'catalog-cards') && window.CatalogHome) CatalogHome.restore(saved.catalog);
   }
 
   function reset() {''', 'restore launcher selection')
@@ -100,6 +105,11 @@ def apply(files):
         '    renderAll();\n    restoreSelection();\n    restInDrawer();', 'restore after cold start')
     home = configure_sections(home)
     home = configure_top_controls(home)
+    home = replace_once(home, '    followSoon();', '    followSoon();\n    if (window.CatalogHome) CatalogHome.paint();', 'catalogue focus follows launcher focus')
+    home = replace_once(home, "      {label: 'Разделы VoKino',", "      {label: 'Каталоги и вкладки', value: '›', catalogs: true, step: function (d) { if (d >= 0) CatalogConfig.open(); }},\n      {label: 'Разделы VoKino',", 'catalogue configuration setting')
+    home = replace_once(home, "function sheetOpen() { return ", "function sheetOpen() { return st.zone === 'catalog-config' || ", 'catalogue configuration blocks screensaver')
+    home = replace_once(home, 'function closeSheets() {', 'function closeSheets() {\n    if (window.CatalogConfig) CatalogConfig.close(false);', 'close catalogue configuration with sheets')
+    home = replace_once(home, 'state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, showCatalogSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].catalogs) st.row = i; updateFocus(); },', 'return to catalogue configuration setting')
     if '<tizen:service ' in manifest:
         raise ValueError('Upstream now declares a service; review before combining')
     service = '''    <feature name="http://tizen.org/feature/web.service"/>
@@ -125,6 +135,10 @@ def apply(files):
                   'kinopoisk-search.js': (ROOT / 'kinopoisk-search.js').read_bytes(),
                   'kinopoisk-availability.js': (ROOT / 'kinopoisk-availability.js').read_bytes(),
                   'ivi-search.js': (ROOT / 'ivi-search.js').read_bytes(),
+                  'catalog-config.js': (ROOT / 'catalog-config.js').read_bytes(),
+                  'catalog-feeds.js': (ROOT / 'catalog-feeds.js').read_bytes(),
+                  'catalog-home.js': (ROOT / 'catalog-home.js').read_bytes(),
+                  'catalog-home.css': (ROOT / 'catalog-home.css').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files
@@ -208,6 +222,7 @@ def configure_top_controls(home):
         '''state: st, move: move, activate: activate, refreshTopControls: function () {
       if (st.top >= TAB_KIND.length) st.top = TAB_KIND.length + TopControls.preferred(st.top - TAB_KIND.length);
       renderTop(); updateFocus();
+      if (window.CatalogHome) CatalogHome.refresh();
     },''', 'refresh utility icon visibility without losing focus')
     home = replace_once(home, 'state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, showKinopoiskSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].kinopoiskKey) st.row = i; updateFocus(); },', 'return from the Kinopoisk key setting')
     return home

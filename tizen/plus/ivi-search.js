@@ -58,6 +58,12 @@
       } catch (e) { finish(false); }
     });
   }
-  window.IviCatalog = {searchState: state, search: search, cancelSearch: cancel};
+  function collection(category, page, signal) {
+    if ([14, 15, 17].indexOf(category) < 0) return Promise.reject(new Error('Неизвестная категория Иви'));
+    page = Math.max(1, Math.min(50, Number(page) || 1)); var from = (page - 1) * 16;
+    var url = 'https://www.ivi.ru/mobileapi/catalogue/v7/?subsite=353&app_version=870&category=' + category + '&from=' + from + '&to=' + (from + 16) + '&fields=id,title,object_type,posters,year,kp_rating';
+    return fetch(url, {credentials: 'omit', redirect: 'error', signal: signal}).then(function (r) { if (!r.ok) throw new Error('Не удалось загрузить Иви'); return r.json(); }).then(function (data) { if (data.error || !Array.isArray(data.result)) throw new Error('Подборка Иви недоступна'); return {items: data.result.slice(0, 16).map(normalize).filter(function (p) { return !!p; }), nextPage: data.result.length > 16 && page < 50 ? page + 1 : 0}; }).catch(function () { throw new Error('Не удалось загрузить подборку Иви'); });
+  }
+  window.IviCatalog = {searchState: state, search: search, cancelSearch: cancel, collection: collection, launch: launch};
   window.IviSearch = createMovieSearch({bridge: IviCatalog, id: 'ivi-search', name: 'Иви', slot: 5, image: function (p) { return /\.(?:jpe?g|png|webp)$/.test(p.poster) ? p.poster + '/156x240/?q=75' : p.poster; }, launch: launch, allowed: function () { return !!TopControls.iviApp(); }});
 })();
