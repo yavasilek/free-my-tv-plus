@@ -12,29 +12,29 @@
       meta: [row.year, row.object_type === 'compilation' ? 'Сериал' : 'Фильм', row.kp_rating ? 'Рейтинг ' + row.kp_rating : '', 'Иви'].filter(function (v) { return !!v; }).join(' · ')};
   }
   function cancel() { seq++; if (abort) abort.abort(); abort = null; state.loading = false; }
-  function search(query, page, done) {
-    cancel(); var mine = seq;
+  function search(query, page, done, target) {
+    cancel(); var mine = seq, result = target || state;
     query = String(query || '').replace(/[\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120).replace(/[\ud800-\udbff]$/, '');
     page = Math.max(1, Math.min(50, Math.floor(Number(page) || 1)));
-    state.query = query; state.page = page; state.items = []; state.nextPage = 0; state.error = '';
-    if (query.length < 2) state.error = 'Введите минимум 2 символа.';
-    else if (!TopControls.iviApp()) state.error = 'Добавьте Иви в избранные приложения.';
-    if (state.error) { if (done) done(new Error(state.error), state); return; }
-    state.loading = true; var controller = abort = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 12000);
+    result.query = query; result.page = page; result.items = []; result.nextPage = 0; result.error = '';
+    if (query.length < 2) result.error = 'Введите минимум 2 символа.';
+    else if (!TopControls.iviApp()) result.error = 'Добавьте Иви в избранные приложения.';
+    if (result.error) { if (done) done(new Error(result.error), result); return; }
+    result.loading = true; var controller = abort = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 12000);
     var from = (page - 1) * 20;
-    var url = 'https://api2.ivi.ru/mobileapi/livesearch/v7/?query=' + encodeURIComponent(query) + '&subsite=353&app_version=870&object_type=content&from=' + from + '&to=' + (from + 20) + '&fields=id,title,year,kind,object_type,posters,kp_rating';
+    var url = 'https://www.ivi.ru/mobileapi/livesearch/v7/?query=' + encodeURIComponent(query) + '&subsite=353&app_version=870&object_type=content&from=' + from + '&to=' + (from + 20) + '&fields=id,title,year,kind,object_type,posters,kp_rating';
     fetch(url, {credentials: 'omit', redirect: 'error', signal: controller.signal})
       .then(function (r) { if (!r.ok) throw new Error('Request failed'); return r.json(); })
       .then(function (data) {
         if (mine !== seq) return;
         if (data.error || !Array.isArray(data.result)) throw new Error('Invalid response');
         var seen = {};
-        state.items = data.result.slice(0, 20).map(normalize).filter(function (p) { if (!p || seen[p.type + p.id]) return false; seen[p.type + p.id] = true; return true; });
-        state.nextPage = data.result.length > 20 && page < 50 ? page + 1 : 0;
-        state.loading = false; abort = null;
-        try { localStorage.setItem(CACHE, JSON.stringify({query: query, page: page, nextPage: state.nextPage, items: state.items, savedAt: Date.now()})); } catch (e) {}
-        if (done) done(null, state);
-      }).catch(function () { if (mine !== seq) return; abort = null; state.loading = false; state.error = 'Не удалось выполнить поиск в Иви. Попробуйте еще раз.'; if (done) done(new Error(state.error), state); })
+        result.items = data.result.slice(0, 20).map(normalize).filter(function (p) { if (!p || seen[p.type + p.id]) return false; seen[p.type + p.id] = true; return true; });
+        result.nextPage = data.result.length > 20 && page < 50 ? page + 1 : 0;
+        result.loading = false; abort = null;
+        if (!target) try { localStorage.setItem(CACHE, JSON.stringify({query: query, page: page, nextPage: result.nextPage, items: result.items, savedAt: Date.now()})); } catch (e) {}
+        if (done) done(null, result);
+      }).catch(function () { if (mine !== seq) return; abort = null; result.loading = false; result.error = 'Не удалось выполнить поиск в Иви. Попробуйте еще раз.'; if (done) done(new Error(result.error), result); })
       .then(function () { clearTimeout(timer); });
   }
   try {
@@ -64,6 +64,7 @@
     var url = 'https://www.ivi.ru/mobileapi/catalogue/v7/?subsite=353&app_version=870&category=' + category + '&from=' + from + '&to=' + (from + 16) + '&fields=id,title,object_type,posters,year,kp_rating';
     return fetch(url, {credentials: 'omit', redirect: 'error', signal: signal}).then(function (r) { if (!r.ok) throw new Error('Не удалось загрузить Иви'); return r.json(); }).then(function (data) { if (data.error || !Array.isArray(data.result)) throw new Error('Подборка Иви недоступна'); return {items: data.result.slice(0, 16).map(normalize).filter(function (p) { return !!p; }), nextPage: data.result.length > 16 && page < 50 ? page + 1 : 0}; }).catch(function () { throw new Error('Не удалось загрузить подборку Иви'); });
   }
-  window.IviCatalog = {searchState: state, search: search, cancelSearch: cancel, collection: collection, launch: launch};
-  window.IviSearch = createMovieSearch({bridge: IviCatalog, id: 'ivi-search', name: 'Иви', slot: 5, image: function (p) { return /\.(?:jpe?g|png|webp)$/.test(p.poster) ? p.poster + '/156x240/?q=75' : p.poster; }, launch: launch, allowed: function () { return !!TopControls.iviApp(); }});
+  function thumbnail(p) { return /\.(?:jpe?g|png|webp)$/.test(p.poster) ? p.poster + '/156x240/?q=75' : p.poster; }
+  window.IviCatalog = {image: thumbnail,searchState: state, search: search, cancelSearch: cancel, collection: collection, launch: launch};
+  window.IviSearch = createMovieSearch({bridge: IviCatalog, id: 'ivi-search', name: 'Иви', slot: 5, image: thumbnail, launch: launch, allowed: function () { return !!TopControls.iviApp(); }});
 })();

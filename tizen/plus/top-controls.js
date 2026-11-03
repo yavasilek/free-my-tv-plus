@@ -11,7 +11,7 @@
   }
   function slots() {
     var out = []; if (values.liveTV) out.push(0); if (values.inputs) out.push(1);
-    out.push(2); if (values.vokino) out.push(3); if (kinopoiskApp() && values.kinopoisk) out.push(4); if (iviApp() && values.ivi) out.push(5); return out;
+    out.push(2); if (values.vokino) out.push(3); if (kinopoiskApp() && values.kinopoisk) out.push(4); if (iviApp() && values.ivi) out.push(5); if (window.CombinedSearch && CombinedSearch.enabled()) out.push(6); return out;
   }
   function iviApp() { var ids = window.VoKinoBridge ? VoKinoBridge.favorites() : []; for (var i = 0; i < ids.length; i++) if (/\.ivi$/i.test(ids[i])) return ids[i]; return ''; }
   window.TopControls = {

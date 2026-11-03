@@ -40,6 +40,8 @@ class BuildTests(unittest.TestCase):
         self.assertIn(b'top-controls.js', app['index.html'])
         self.assertIn(b'kinopoisk-search.js', app['index.html'])
         self.assertIn(b'ivi-search.js', app['index.html'])
+        self.assertLess(app['index.html'].index(b'ivi-search.js'), app['index.html'].index(b'combined-search.js'))
+        self.assertIn(b'CombinedSearch.restore(saved.combinedSearch)', app['home.js'])
         self.assertIn(b'catalog-config.js', app['index.html'])
         self.assertIn(b'catalog-home.css', app['index.html'])
         self.assertLess(app['index.html'].index(b'home.js'), app['index.html'].index(b'catalog-home.js'))

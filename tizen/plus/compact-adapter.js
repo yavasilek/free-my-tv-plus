@@ -121,6 +121,7 @@
         search: window.VoKinoSearch ? VoKinoSearch.selection() : null,
         kinopoiskSearch: window.KinopoiskSearch ? KinopoiskSearch.selection() : null,
         iviSearch: window.IviSearch ? IviSearch.selection() : null,
+        combinedSearch: window.CombinedSearch ? CombinedSearch.selection() : null,
         catalog: window.CatalogHome ? CatalogHome.selection() : null}));
     } catch (e) {}
   }
@@ -147,6 +148,7 @@
     if (changed && !quiet) syncFavorites();
   };
   bridge.favorites = function () { return favoriteIds.slice(); };
+  bridge.hasVoKino = function () { return favoriteIds.indexOf(appId) >= 0; };
   function launchWithReturn(id, start) {
     if (favoriteIds.indexOf(id) < 0) { signal('/cancel-watch'); start(); return; }
     rememberSelection();
@@ -207,10 +209,10 @@
   bridge.cancelSearch = function () {
     searchSeq++; if (searchAbort) searchAbort.abort(); searchAbort = null; bridge.searchState.loading = false;
   };
-  bridge.search = function (query, page, done) {
+  bridge.search = function (query, page, done, target) {
     query = String(query || '').replace(/[\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120).replace(/[\ud800-\udbff]$/, '');
     bridge.cancelSearch();
-    var seq = searchSeq, state = bridge.searchState, a = account(), base = a ? a.base : PUBLIC_BASE;
+    var seq = searchSeq, state = target || bridge.searchState, a = account(), base = a ? a.base : PUBLIC_BASE;
     page = Math.max(1, Math.min(9999, Math.floor(Number(page) || 1)));
     state.items = [];
     state.query = query; state.page = page; state.error = ''; state.nextPage = 0;
@@ -223,7 +225,7 @@
       var seen = {};
       state.items = normalize(rows, 'search').filter(function (p) { if (seen[p.id]) return false; seen[p.id] = true; return true; });
       if (next) { try { state.nextPage = Number(new URL(base + next).searchParams.get('page')) || 0; } catch (e) {} }
-      try { localStorage.setItem(SEARCH, JSON.stringify({query: query, page: page, nextPage: state.nextPage, items: state.items, savedAt: Date.now()})); } catch (e) {}
+      if (!target) try { localStorage.setItem(SEARCH, JSON.stringify({query: query, page: page, nextPage: state.nextPage, items: state.items, savedAt: Date.now()})); } catch (e) {}
       if (done) done(null, state);
     });
   };

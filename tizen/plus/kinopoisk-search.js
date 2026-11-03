@@ -26,16 +26,16 @@
     state.query = ''; state.items = []; state.error = ''; state.page = 1; state.nextPage = 0;
     if (window.CatalogFeeds) CatalogFeeds.reset('kinopoisk'); return true;
   }
-  function search(query, page, done) {
-    cancel(); var mine = seq;
+  function search(query, page, done, target) {
+    cancel(); var mine = seq, result = target || state;
     query = String(query || '').replace(/[\x00-\x1f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120).replace(/[\ud800-\udbff]$/, '');
     page = Math.max(1, Math.min(20, Math.floor(Number(page) || 1)));
-    state.query = query; state.page = page; state.items = []; state.error = ''; state.nextPage = 0;
-    if (query.length < 2) state.error = 'Введите минимум 2 символа.';
-    else if (!hasKey()) state.error = 'Добавьте API-ключ в настройках поиска Кинопоиска.';
-    else if (!TopControls.kinopoiskApp()) state.error = 'Добавьте Кинопоиск в избранные приложения.';
-    if (state.error) { if (done) done(new Error(state.error), state); return; }
-    state.loading = true; abort = new AbortController(); var controller = abort;
+    result.query = query; result.page = page; result.items = []; result.error = ''; result.nextPage = 0;
+    if (query.length < 2) result.error = 'Введите минимум 2 символа.';
+    else if (!hasKey()) result.error = 'Добавьте API-ключ в настройках поиска Кинопоиска.';
+    else if (!TopControls.kinopoiskApp()) result.error = 'Добавьте Кинопоиск в избранные приложения.';
+    if (result.error) { if (done) done(new Error(result.error), result); return; }
+    result.loading = true; abort = new AbortController(); var controller = abort;
     var timer = setTimeout(function () { controller.abort(); }, 12000);
     fetch(HOST + '/api/v2.1/films/search-by-keyword?keyword=' + encodeURIComponent(query) + '&page=' + page,
       {headers: {'X-API-KEY': key(), 'Accept': 'application/json'}, credentials: 'omit', redirect: 'error', signal: controller.signal})
@@ -46,17 +46,17 @@
       }).then(function (data) {
         if (mine !== seq) return;
         var seen = {};
-        state.items = (Array.isArray(data.films) ? data.films : []).map(normalize).filter(function (p) { if (!p || seen[p.id]) return false; seen[p.id] = true; return true; }).slice(0, 20);
-        state.nextPage = page < Math.min(20, Number(data.pagesCount) || 0) ? page + 1 : 0;
-        state.loading = false; abort = null;
-        try { localStorage.setItem(CACHE, JSON.stringify({query: query, page: page, items: state.items, nextPage: state.nextPage, savedAt: Date.now()})); } catch (e) {}
-        if (done) done(null, state);
+        result.items = (Array.isArray(data.films) ? data.films : []).map(normalize).filter(function (p) { if (!p || seen[p.id]) return false; seen[p.id] = true; return true; }).slice(0, 20);
+        result.nextPage = page < Math.min(20, Number(data.pagesCount) || 0) ? page + 1 : 0;
+        result.loading = false; abort = null;
+        if (!target) try { localStorage.setItem(CACHE, JSON.stringify({query: query, page: page, items: result.items, nextPage: result.nextPage, savedAt: Date.now()})); } catch (e) {}
+        if (done) done(null, result);
       }).catch(function (e) {
         if (mine !== seq) return;
-        abort = null; state.loading = false;
-        state.error = e.status === 401 || e.status === 403 ? 'API-ключ не принят. Проверьте его в настройках поиска Кинопоиска.' :
+        abort = null; result.loading = false;
+        result.error = e.status === 401 || e.status === 403 ? 'API-ключ не принят. Проверьте его в настройках поиска Кинопоиска.' :
           e.status === 402 ? 'Лимит запросов вашего API-ключа исчерпан. Попробуйте позже.' : e.status === 429 ? 'Слишком много запросов. Подождите немного.' : 'Не удалось выполнить поиск. Попробуйте еще раз.';
-        if (done) done(new Error(state.error), state);
+        if (done) done(new Error(result.error), result);
       }).then(function () { clearTimeout(timer); });
   }
   try {
@@ -158,7 +158,7 @@
       .then(function (r) { if (!r.ok) { var error = new Error(r.status === 401 || r.status === 403 ? 'Проверьте ключ Кинопоиска' : r.status === 402 ? 'Лимит API Кинопоиска исчерпан' : 'Не удалось загрузить подборку'); error.status = r.status; throw error; } return r.json(); })
       .then(function (data) { if (!Array.isArray(data.items)) throw new Error('Подборка недоступна'); return {items: data.items.map(function (r) { return normalize({filmId: r.kinopoiskId, nameRu: r.nameRu, nameEn: r.nameEn, posterUrlPreview: r.posterUrlPreview, posterUrl: r.posterUrl, type: r.type, year: r.year, rating: r.ratingKinopoisk}); }).filter(function (p) { return !!p; }), nextPage: page < Math.min(50, Number(data.totalPages) || 0) ? page + 1 : 0}; });
   }
-  window.KinopoiskCatalog = {searchState: state, search: search, cancelSearch: cancel, hasKey: hasKey, setKey: setKey, openKey: openKey, closeKey: closeKey, collection: collection, launch: launch};
+  window.KinopoiskCatalog = {availability: availability, searchState: state, search: search, cancelSearch: cancel, hasKey: hasKey, setKey: setKey, openKey: openKey, closeKey: closeKey, collection: collection, launch: launch};
   window.KinopoiskSearch = createMovieSearch({bridge: KinopoiskCatalog, id: 'kinopoisk-search', name: 'Кинопоиска', where: 'Кинопоиске', appName: 'Кинопоиск', slot: 4,
     annotation: availability.annotation, visible: availability.visible,
     image: function (p) { return p.poster; }, launch: launch,

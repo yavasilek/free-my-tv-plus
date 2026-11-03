@@ -80,7 +80,7 @@ try{
   assert.deepEqual(page.consoleErrors,[]);
   // Smoke-test the actual built launcher, in addition to the focused IME fixture.
   const full=await browser.newPage({width:1920,height:1080});
-  await full.route('**/out/tizen-plus/tv.js',route=>route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,'out/tizen-plus/tv.js'),'utf8').replace('done(SAMPLE.map(',"done(SAMPLE.concat([['Test.kpTizen','Кинопоиск','#111111'],['Test.ivi','Иви','#111111']]).map(")}));
+  await full.route('**/out/tizen-plus/tv.js',route=>route.fulfill({contentType:'text/javascript',body:fs.readFileSync(path.join(root,'out/tizen-plus/tv.js'),'utf8').replace('done(SAMPLE.map(',"done(SAMPLE.concat([['Test.kpTizen','Кинопоиск','#111111'],['Test.ivi','Иви','#111111'],['UMHvZ0dWqo.AnalogWatch','VoKino','#111111']]).map(")}));
   await full.route('https://kinopoiskapiunofficial.tech/api/**',route=>{
     const url=new URL(route.request().url());
     if(url.pathname.endsWith('/collections')){
@@ -97,7 +97,7 @@ try{
     const body=route.request().postDataJSON(),id=parseInt(body.variables.id,16);availabilityChecks.push(id);
     return route.fulfill({json:id%10===3?{errors:[{message:'Temporary failure'}]}:{data:{movieByContentUuid:{id,viewOption:{watchabilityStatus:id%10===1?'UNWATCHABLE':'WATCHABLE',purchasabilityStatus:id%10===1?'UNPURCHASABLE':'PURCHASABLE',buttonText:id%10===1?null:'Смотреть'}}}}});
   });
-  await full.route('https://api2.ivi.ru/mobileapi/livesearch/v7/**',route=>{
+  await full.route('https://www.ivi.ru/mobileapi/livesearch/v7/**',route=>{
     const u=new URL(route.request().url()),start=Number(u.searchParams.get('from'));
     return route.fulfill({json:{result:Array.from({length:21},(_,i)=>({id:301+start+i,title:'Пример Иви '+(i+1),year:2024,object_type:i===1?'compilation':'video',posters:[{type:'poster-vertical',url:'https://thumbs.dfs.ivi.ru/storage0/fixture.jpg'}]}))}});
   });
@@ -115,7 +115,7 @@ try{
     return route.fulfill({json:fixture||{type:'list',channels:[],page:{}}});
   });
   await full.goto('http://127.0.0.1:'+server.address().port+'/out/tizen-plus/index.html');
-  await full.waitForFunction(()=>window.FreeMyTV&&document.querySelectorAll('#buttons .round').length===6);
+  await full.waitForFunction(()=>window.FreeMyTV&&document.querySelectorAll('#buttons .round').length===7);
   await full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+3;FreeMyTV.activate();});
   await full.waitForFunction(()=>VoKinoSearch.isOpen()&&document.activeElement.id==='vokino-search-query');
   await full.setViewport({width:1920,height:568});
@@ -240,7 +240,7 @@ try{
     const at=utilityRows.findIndex(text=>text.includes(name));assert.ok(at>=0);
     await full.eval(i=>{FreeMyTV.state.row=i;FreeMyTV.activate();},at);
   }
-  assert.deepEqual(await full.eval(()=>Array.from(document.querySelectorAll('#buttons .round')).filter(e=>getComputedStyle(e).display!=='none').map(e=>e.dataset.topAction)),['settings','search']);
+  assert.deepEqual(await full.eval(()=>Array.from(document.querySelectorAll('#buttons .round')).filter(e=>getComputedStyle(e).display!=='none').map(e=>e.dataset.topAction)),['settings','search','combined']);
   await full.keyboard.press('Escape');
   await full.eval(()=>CatalogHome.focus('vokino','tabs'));
   await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.top),tabCount+2);
@@ -252,7 +252,7 @@ try{
   await full.eval(()=>CatalogHome.focus('vokino','tabs'));
   await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'settings');
   await full.eval(()=>{TopControls.toggle('liveTV');TopControls.toggle('inputs');});
-  assert.equal(await full.eval(()=>TopControls.slots().length),4);
+  assert.equal(await full.eval(()=>TopControls.slots().length),5);
   await full.keyboard.press('Escape');
   assert.equal(await full.eval(()=>TopControls.kinopoiskApp()),'','An installed app outside favorites exposes no search button');
   const openSettings=async()=>full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+2;FreeMyTV.activate();});
@@ -378,8 +378,82 @@ try{
   assert.equal(await full.eval(()=>CatalogHome.selection().choices.kinopoisk.card),2);
   assert.deepEqual(await full.eval(()=>CatalogConfig.services().map(s=>s.id)),['ivi','kinopoisk','vokino'],'Service order survives reload and app return');
   assert.deepEqual(await full.eval(()=>CatalogConfig.tabs('ivi').map(t=>t.id)),['series','movies']);
+  // The combined screen shares providers and the IME, but owns its query, source preferences and return selection.
+  await full.eval(()=>{FreeMyTV.editFavorites();FreeMyTV.state.edit=Array.from(document.querySelectorAll('#shelfedit .favorite-name')).findIndex(r=>r.textContent==='VoKino');FreeMyTV.move(0,0);});
+  await full.keyboard.press('Enter');await full.keyboard.press('Escape');
+  assert.equal(await full.eval(()=>VoKinoBridge.hasVoKino()),true);
+  const standalone=await full.eval(()=>[VoKinoBridge.searchState.query,KinopoiskCatalog.searchState.query,IviCatalog.searchState.query]);
+  const combinedCalls=[];
+  let iviFails=true;
+  await full.route('https://kinopoiskapiunofficial.tech/api/**/search-by-keyword?**',async route=>{
+    const url=new URL(route.request().url());
+    combinedCalls.push(['kinopoisk',url.searchParams.get('keyword'),url.searchParams.get('page')]);
+    await route.fallback();
+  });
+  await full.route(/https:\/\/api\.vokino\.(pro|co|org|tv)\/.*\/search\?/,async route=>{
+    const url=new URL(route.request().url());
+    combinedCalls.push(['vokino',url.searchParams.get('name'),url.searchParams.get('page')]);
+    await sleep(1200);await route.fallback();
+  });
+  await full.route('**/mobileapi/livesearch/v7/**',async route=>{
+    const url=new URL(route.request().url());
+    combinedCalls.push(['ivi',url.searchParams.get('query'),url.searchParams.get('from')]);
+    if (iviFails) { await sleep(1000);await route.fulfill({status:503,json:{}}); }
+    else await route.fallback();
+  });
+  const openCombined=async()=>full.eval(()=>{FreeMyTV.state.zone='top';FreeMyTV.state.top=VoKinoSections.tabs().length+6;FreeMyTV.activate();});
+  const toggleCombinedSetting=async label=>full.eval(label=>{FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent===label);FreeMyTV.activate();},label);
+  await openCombined();
+  await full.waitForFunction(()=>document.activeElement.id==='combined-search-query');
+  await full.setViewport({width:1920,height:568});
+  await full.eval(()=>{document.activeElement.value='Матрица';});
+  await full.waitForFunction(()=>document.querySelector('#combined-search .search-result')&&document.querySelector('#combined-search .search-status').textContent.includes('поиск…'));
+  assert.equal(await full.eval(()=>document.querySelector('#combined-search .box').getBoundingClientRect().width),1220);
+  assert.ok(await full.eval(()=>document.querySelector('#combined-search .box').getBoundingClientRect().bottom<568));
+  await full.screenshot({path:path.join(root,'out/plus-tests/combined-keyboard.png')});
+  await full.keyboard.press('Enter');await full.setViewport({width:1920,height:1080});
+  assert.equal(await full.locator('#combined-search .search-result.search-focus .search-name').textContent(),'Матрица 0');
+  await full.waitForFunction(()=>document.querySelector('#combined-search .search-status').textContent.includes('VoKino · 12'));
+  assert.equal(await full.locator('#combined-search .search-result.search-focus .search-name').textContent(),'Матрица 0','Late results preserve the highlighted title');
+  assert.match(await full.locator('#combined-search .search-status').textContent(),/Иви · ошибка/);
+  const visibleServices=await full.locator('#combined-search .search-meta').allTextContents();
+  assert.ok(visibleServices.some(t=>t.includes('Кинопоиск'))&&visibleServices.some(t=>t.includes('VoKino')),'Multiple sources are visible together');
+  assert.deepEqual(combinedCalls.map(r=>r[0]).sort(),['ivi','kinopoisk','vokino']);
+  assert.deepEqual(await full.eval(()=>[VoKinoBridge.searchState.query,KinopoiskCatalog.searchState.query,IviCatalog.searchState.query]),standalone);
+  await full.screenshot({path:path.join(root,'out/plus-tests/combined-results.png')});
+  await full.setViewport({width:1280,height:720});
+  assert.equal(await full.locator('#combined-search .search-result').count(),5,'A 720p screen keeps the full list when the keyboard is closed');
+  await full.screenshot({path:path.join(root,'out/plus-tests/combined-results-1280.png')});
+  await full.setViewport({width:1920,height:1080});
+  await full.eval(()=>{window.__combinedLaunches=[];window.tizen={ApplicationControlData:function(){},ApplicationControl:function(){},application:{launchAppControl:function(control,id,yes){window.__combinedLaunches.push(id);yes();}}};});
+  await full.keyboard.press('Enter');await full.waitForFunction(()=>window.__combinedLaunches.length===1);
+  assert.deepEqual(await full.eval(()=>window.__combinedLaunches),['Test.kpTizen']);
+  await full.reload();await full.waitForFunction(()=>CombinedSearch.isOpen()&&CombinedSearch.selection().source==='kinopoisk');
+  assert.equal(await full.locator('#combined-search .search-result.search-focus .search-name').textContent(),'Матрица 0');
+  await full.keyboard.press('Escape');await full.reload();
+  iviFails=false;combinedCalls.length=0;
+  await openCombined();await full.waitForFunction(()=>document.activeElement.id==='combined-search-query');
+  await full.locator('#combined-search-query').fill('Матрица');
+  await full.waitForFunction(()=>/VoKino · 12.*Кинопоиск · 20.*Иви · 20/.test(document.querySelector('#combined-search .search-status').textContent));
+  await full.keyboard.press('Enter');
+  const threeServices=await full.locator('#combined-search .search-meta').allTextContents();
+  assert.ok(['VoKino','Кинопоиск','Иви'].every(service=>threeServices.some(meta=>meta.includes(service))),'All three providers appear on the first screen');
+  await full.keyboard.press('Escape');
+  await openSettings();await toggleCombinedSetting('Общий поиск · Иви');
+  await full.keyboard.press('Escape');await full.reload();
+  combinedCalls.length=0;
+  await openCombined();await full.waitForFunction(()=>document.activeElement.id==='combined-search-query');
+  await full.locator('#combined-search-query').fill('Матрица');
+  await full.waitForFunction(()=>document.querySelector('#combined-search .search-status').textContent.includes('VoKino · 12'));
+  assert.deepEqual(combinedCalls.map(r=>r[0]).sort(),['kinopoisk','vokino'],'Deselected source stays excluded after restart');
+  await full.keyboard.press('Enter');await full.keyboard.press('ArrowRight');
+  await full.waitForFunction(()=>document.querySelector('#combined-search .search-page-label').textContent==='Страница 2');
+  assert.ok(combinedCalls.some(r=>r[0]==='kinopoisk'&&r[2]==='2'));
+  await full.keyboard.press('Escape');
+  await openSettings();await toggleCombinedSetting('Кнопка «Общий поиск»');
+  assert.equal(await full.eval(()=>TopControls.slots().includes(6)),false);
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);

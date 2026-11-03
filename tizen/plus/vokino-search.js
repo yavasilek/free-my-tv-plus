@@ -16,7 +16,7 @@
     if (modal) return;
     modal = node('div', 'layer sheet movie-search', document.getElementById('stage')); modal.id = prefix;
     modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-labelledby', prefix + '-title');
-    var box = node('div', 'box', modal), title = node('h2', 'search-title', box, 'Поиск ' + service); title.id = prefix + '-title';
+    var box = node('div', 'box', modal), title = node('h2', 'search-title', box, (options.title || 'Поиск ' + service)); title.id = prefix + '-title';
     var label = node('label', 'search-label', box, 'Название фильма или сериала'); label.htmlFor = prefix + '-query';
     var form = node('div', 'search-form', box);
     input = node('input', 'search-query', form); input.id = prefix + '-query'; input.type = 'text'; input.maxLength = 120;
@@ -38,10 +38,10 @@
   }
   function paint() {
     if (!opened) return;
-    var s = state(), compact = document.activeElement === input || window.innerHeight < 800, count = compact ? 2 : 5;
+    var s = state(), compact = document.activeElement === input || window.innerHeight < window.innerWidth * 800 / 1920, count = compact ? 2 : 5;
     modal.classList.toggle('search-editing', compact);
     var start = Math.max(0, Math.min(Math.max(0, s.items.length - count), Math.max(0, cursor - 2)));
-    status.textContent = s.opening ? 'Открываем в ' + where + '...' : s.loading || typingTimer ? 'Ищем в ' + where + '...' : s.error || (!s.query ? 'Введите минимум 2 символа - поиск начнется автоматически.' : !s.items.length ? 'Ничего не найдено. Попробуйте другое название.' : 'Результатов на странице: ' + s.items.length);
+    status.textContent = s.opening ? 'Открываем в ' + where + '...' : typingTimer ? 'Ищем в ' + where + '...' : options.status && s.query.length >= 2 ? options.status() : s.loading ? 'Ищем в ' + where + '...' : s.error || (!s.query ? 'Введите минимум 2 символа - поиск начнется автоматически.' : !s.items.length ? 'Ничего не найдено. Попробуйте другое название.' : 'Результатов на странице: ' + s.items.length);
     modal.setAttribute('aria-busy', s.loading || s.opening ? 'true' : 'false');
     submit.textContent = s.loading ? 'Ищем...' : 'Найти';
     previous.disabled = s.loading || s.page <= 1; next.disabled = s.loading || !s.nextPage;
@@ -51,7 +51,8 @@
       var visible = Math.min(count, s.items.length - start); list.style.height = Math.max(1, visible) * 96 + 'px';
       for (var i = start; i < start + visible; i++) (function (index) {
         var p = s.items[index], row = node('button', 'search-result', list); row.type = 'button';
-        var poster = node('img', 'search-poster', row); poster.alt = ''; poster.src = options.image ? options.image(p) : Data.image(p.poster || p.backdrop, 'w300');
+        var url = options.image ? options.image(p) : Data.image(p.poster || p.backdrop, 'w300');
+        if (url) { var poster = node('img', 'search-poster', row); poster.alt = ''; poster.onerror = function () { this.hidden = true; }; poster.src = url; }
         var text = node('span', 'search-result-text', row); node('span', 'search-name', text, p.title); node('span', 'search-meta', text, p.meta);
         var badge = options.annotation ? node('span', 'search-availability', row) : null;
         row.onclick = function () { cursor = index; activate(); };
@@ -72,6 +73,13 @@
     focusClass(next, cursor === s.items.length + 1 && !next.disabled);
     if (options.visible) options.visible(rows.map(function (r) { return s.items[r.index]; }), paint);
   }
+  function refresh() {
+    if (options.incremental && cursor >= 0 && rendered && rendered !== state().items) {
+      var index = state().items.indexOf(rendered[cursor]);
+      if (index >= 0) cursor = index;
+    }
+    paint();
+  }
   function queryValue() { return input.value.replace(/\s+/g, ' ').trim(); }
   function stopValueWatch() { if (valueWatcher) clearInterval(valueWatcher); valueWatcher = 0; }
   function startValueWatch() {
@@ -84,20 +92,27 @@
     if (!opened) return;
     if (input.value === observedValue) return;
     observedValue = input.value; touch(); clearTimeout(typingTimer); typingTimer = 0;
+    if (options.incremental) bridge.cancelSearch();
     if (queryValue().length < 2) { bridge.search(input.value, 1, function () { paint(); }); return; }
     typingTimer = setTimeout(function () { typingTimer = 0; run(1, true); }, 400); paint();
   }
   function run(page, live) {
     if (!opened) return;
     touch(); clearTimeout(typingTimer); typingTimer = 0;
+    var editing = document.activeElement === input;
     if (!live) { input.blur(); cursor = -1; }
-    if (queryValue() === state().query && page === state().page && !state().error) {
-      if (!state().loading && !live) cursor = state().items.length ? 0 : -1;
+    if (queryValue() === state().query && page === state().page &&
+        (state().loading || (!state().error && !state().retry) || (options.incremental && editing && state().items.length))) {
+      if ((!state().loading || options.incremental) && !live) cursor = state().items.length ? 0 : -1;
       paint(); return;
     }
+    if (options.incremental && document.activeElement !== input) cursor = -1;
     bridge.search(input.value, page, function () {
       if (!opened) return;
-      cursor = document.activeElement === input ? -2 : state().items.length && !state().error ? 0 : -1; paint();
+      if (!options.incremental || cursor < 0) {
+        cursor = document.activeElement === input ? -2 : state().items.length && (!state().error || options.incremental) ? 0 : -1;
+        paint();
+      } else refresh();
     });
     paint();
   }
@@ -127,17 +142,17 @@
     var s = state(); touch();
     if (cursor === -2) { input.focus(); return; }
     if (cursor === -1) { run(1); return; }
-    if (s.loading || s.opening) return;
+    if ((s.loading && !options.incremental) || s.opening || (typingTimer && options.incremental)) return;
     if (cursor < s.items.length) {
       var p = s.items[cursor]; if (p) (options.launch || function (item, done) { TV.launch(item.app, null, done); })(p, function (ok, error) { if (!ok) { s.error = error || 'Не удалось открыть ' + (options.appName || service) + '. Попробуйте еще раз.'; paint(); } });
       paint();
-    } else if (cursor === s.items.length && s.page > 1) run(s.page - 1);
-    else if (cursor === s.items.length + 1 && s.nextPage) run(s.nextPage);
+    } else if (!s.loading && cursor === s.items.length && s.page > 1) run(s.page - 1);
+    else if (!s.loading && cursor === s.items.length + 1 && s.nextPage) run(s.nextPage);
   }
   function positions() {
     var s = state(), out = [-2, -1];
+    if (!s.loading || options.incremental) for (var i = 0; i < s.items.length; i++) out.push(i);
     if (!s.loading) {
-      for (var i = 0; i < s.items.length; i++) out.push(i);
       if (s.page > 1) out.push(s.items.length);
       if (s.nextPage) out.push(s.items.length + 1);
     }
@@ -170,7 +185,7 @@
     open: function () { if (options.allowed && !options.allowed()) return; open(null, true); }, close: close,
     restore: function (selection) { open(selection, false); },
     selection: function () { return opened ? {cursor: cursor} : null; },
-    submit: function () { run(1); }, isOpen: function () { return opened; }
+    submit: function () { run(1); }, refresh: refresh, isOpen: function () { return opened; }
   };
   };
   window.VoKinoSearch = createMovieSearch({bridge: window.VoKinoBridge, id: 'vokino-search', name: 'VoKino', slot: 3});

@@ -5,6 +5,7 @@
 #buttons .kinopoisk-search-icon { position: absolute; left: 12px; top: 11px; font-size: 30px; line-height: 40px; font-weight: 600; }
 #buttons .kinopoisk-search-icon::before { content: ''; position: absolute; left: 24px; top: 18px; width: 12px; height: 12px; border: 2px solid currentColor; border-radius: 50%; }
 #buttons .kinopoisk-search-icon::after { content: ''; position: absolute; left: 37px; top: 33px; width: 9px; height: 2px; background: currentColor; transform: rotate(45deg); }
+#buttons .combined-search-icon::before { content: '+'; position: absolute; top: -4px; left: 3px; font: 600 21px/28px Inter, sans-serif; }
 .movie-search { background: rgba(0, 0, 0, .72); }
 .movie-search .box { position: absolute; box-sizing: border-box; left: 350px; top: 80px; width: 1220px; padding: 32px; border-radius: 24px; background: #111; color: #fff; box-shadow: none; }
 .movie-search .search-title { position: static; width: auto; padding: 0; margin: 0 0 20px; text-align: left; transform: none; font-size: 38px; line-height: 48px; font-weight: 600; }
