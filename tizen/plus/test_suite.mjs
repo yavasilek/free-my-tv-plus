@@ -17,7 +17,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false)
     document: {hidden: false, addEventListener() {}},
     localStorage: {getItem: key => store.get(key) || null, setItem: (key, value) => store.set(key, value),removeItem:key=>store.delete(key)},
     Prefs: {cards: () => prefs.cards || 2, shelf: () => prefs.shelf, set: (k, v) => {prefs[k] = v;}},
-    Data: {picks: () => [], hasKey: () => false, image: p => p, appFor: () => null, showcase: () => [], settingsChanged() {}},
+    Data: {picks: () => [], hasKey: () => false, image: p => p, appFor: () => null, usable: key => key === 'stock', showcase: () => [], settingsChanged() {}},
     TV: {launch: id => launches.push(id)},
     tizen: {application: {getAppInfo(id) {if(withService||id==='xvvl3S1TT1.TizenTubeStandalone')return {};throw new Error('No service in unit test');},
       launchAppControl(control, app, yes) {launches.push({control, app}); yes();}},
@@ -46,6 +46,13 @@ a.box.VoKinoBridge.refresh(true); await flush();
 assert.equal(a.requests.length, 1, 'Public cards use a single feed request');
 assert.equal(a.box.Data.picks(null).length, 2);
 assert.equal(a.box.Data.showcase().length, 2);
+const saverTarget = a.box.Data.showcase()[0].app;
+a.box.VoKinoBridge.setFavorites([], true);
+assert.equal(a.box.Data.usable(saverTarget), false, 'VoKino must be available in favorites for the screensaver');
+a.box.VoKinoBridge.setFavorites(['UMHvZ0dWqo.AnalogWatch'], true);
+assert.equal(a.box.Data.usable(saverTarget), true, 'Screensaver recognizes the VoKino deep-link target');
+assert.equal(a.box.Data.usable('bridge-vokino:invalid'), false);
+assert.equal(a.box.Data.usable('stock'), true, 'Built-in services still use the original eligibility check');
 assert.match(a.box.Data.image('https://proxy.vokino.org/image/t/p/w1280/b.jpg', 'w300'), /\/w185\//);
 assert.match(a.box.Data.image('https://proxy.vokino.org/image/t/p/w1280/b.jpg', 'w1280'), /\/w780\//);
 a.box.VoKinoBridge.refresh(false); await flush(); assert.equal(a.requests.length, 1, 'Fresh cache suppresses requests');

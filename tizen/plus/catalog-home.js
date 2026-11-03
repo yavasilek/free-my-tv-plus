@@ -114,7 +114,7 @@
     var st = FreeMyTV.state, custom = st.zone === 'catalog-tabs' || st.zone === 'catalog-cards', utility = st.zone === 'top' && st.top >= oldTopCount();
     if (!custom && !(st.zone === 'shelf' && e.keyCode === 38) && !(utility && [37, 39, 40].indexOf(e.keyCode) >= 0)) return;
     if ([37, 38, 39, 40, 13, 10009, 461, 27, 8].indexOf(e.keyCode) < 0) return;
-    e.preventDefault(); e.stopImmediatePropagation(); if (FreeMyTV.poke(true)) return;
+    e.preventDefault(); e.stopImmediatePropagation(); if (FreeMyTV.poke(e.keyCode === TV.keys.ok)) return;
     if (st.zone === 'shelf') { var rows = services(); focusRow(activeService || (rows.length ? rows[rows.length - 1].id : ''), 'cards'); return; }
     if (utility) { lastUtility = st.top - oldTopCount(); if (e.keyCode === 40) focusRow(services()[0] && services()[0].id, 'tabs'); else { var slots = TopControls.slots(), at = slots.indexOf(lastUtility); utilities(slots[Math.max(0, Math.min(slots.length - 1, at + (e.keyCode === 39 ? 1 : -1)))]); } return; }
     if (e.keyCode >= 37 && e.keyCode <= 40) move(e.keyCode === 37 ? -1 : e.keyCode === 39 ? 1 : 0, e.keyCode === 38 ? -1 : e.keyCode === 40 ? 1 : 0);

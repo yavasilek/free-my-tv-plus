@@ -11,7 +11,7 @@
   var serviceAvailable = false;
   var favoriteIds = [];
   var original = {picks: Data.picks, hasKey: Data.hasKey, image: Data.image,
-    appFor: Data.appFor, showcase: Data.showcase, launch: TV.launch};
+    appFor: Data.appFor, usable: Data.usable, showcase: Data.showcase, launch: TV.launch};
   var bridge = window.VoKinoBridge = {version: '1.0', items: [], error: '', lastAction: null, inFlight: false, offsets: {},
     searchState: {query: '', page: 1, items: [], nextPage: 0, loading: false, error: ''}};
 
@@ -105,6 +105,11 @@
   };
   Data.appFor = function (key) {
     return typeof key === 'string' && /^bridge-vokino:[a-f0-9]{24}$/.test(key) ? {id: key, title: 'VoKino'} : original.appFor(key);
+  };
+  Data.usable = function (key) {
+    // The stock eligibility check only recognizes built-in streaming services.
+    if (/^bridge-vokino:[a-f0-9]{24}$/.test(key || '')) return bridge.hasVoKino();
+    return original.usable(key);
   };
   function signal(path, done) {
     if (!serviceAvailable) { if (done) done(); return; }

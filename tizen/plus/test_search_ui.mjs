@@ -401,6 +401,31 @@ try{
   await full.eval(()=>{FreeMyTV.editFavorites();FreeMyTV.state.edit=Array.from(document.querySelectorAll('#shelfedit .favorite-name')).findIndex(r=>r.textContent==='VoKino');FreeMyTV.move(0,0);});
   await full.keyboard.press('Enter');await full.keyboard.press('Escape');
   assert.equal(await full.eval(()=>VoKinoBridge.hasVoKino()),true);
+  // The photo saver must recognize VoKino titles and consume remote keys exactly once.
+  await full.route('**/image/t/p/w780/**',route=>route.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720"><path fill="#354250" d="M0 0h1280v720H0z"/></svg>'}));
+  await full.eval(()=>{
+    window.__saverLaunches=[];window.__previousTizen=window.tizen;
+    window.tizen={ApplicationControlData:function(key,value){this.value=value;},ApplicationControl:function(op,uri,mime,cat,data){this.data=data;},
+      application:{launchAppControl:function(control,id,yes){window.__saverLaunches.push({id,uri:JSON.parse(control.data[0].value[0]).values});yes();}}};
+    Prefs.set('saverWatch',true);CatalogHome.focus('vokino','cards');FreeMyTV.showSaver();
+  });
+  await full.waitForFunction(()=>document.querySelector('#saver .photo.on')&&document.querySelector('#saver .title').textContent.length>0);
+  assert.match(await full.locator('#saver .photo.on').evaluate(e=>e.style.backgroundImage),/w780/);
+  assert.match(await full.locator('#saver .hint').textContent(),/VoKino/);
+  await full.keyboard.press('ArrowRight');
+  assert.equal(await full.locator('#saver.on').count(),0);
+  assert.deepEqual(await full.eval(()=>window.__saverLaunches),[],'An arrow over a photo closes the saver without launching the film');
+  await full.eval(()=>FreeMyTV.showSaver());
+  const expectedMovie=await full.eval(()=>Data.showcase().find(p=>p.title===document.querySelector('#saver .title').textContent).id.slice(7));
+  await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>window.__saverLaunches.length===1);
+  assert.deepEqual(await full.eval(()=>window.__saverLaunches),[{id:'UMHvZ0dWqo.AnalogWatch',uri:'https://api.vokino.pro/v2/view/'+expectedMovie}]);
+  await full.eval(()=>{Prefs.set('saverWatch',false);FreeMyTV.showSaver();});
+  assert.equal(await full.locator('#saver .hint').textContent(),'');
+  await full.keyboard.press('Enter');
+  assert.equal(await full.locator('#saver.on').count(),0);
+  assert.equal(await full.eval(()=>window.__saverLaunches.length),1,'OK only closes the saver when the watch option is off');
+  await full.eval(()=>{window.tizen=window.__previousTizen;localStorage.removeItem('fmtv.return.selection');});
   const standalone=await full.eval(()=>[VoKinoBridge.searchState.query,KinopoiskCatalog.searchState.query,IviCatalog.searchState.query]);
   const combinedCalls=[];
   let iviFails=true;
@@ -510,6 +535,6 @@ try{
   assert.equal(await full.eval(()=>MyShowsCatalog.items('watching').length),0);
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);
