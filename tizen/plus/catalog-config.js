@@ -9,19 +9,23 @@
       {id: 'top250', name: 'Топ-250', type: 'TOP_250_MOVIES'}, {id: 'family', name: 'Семейное', type: 'FAMILY'},
       {id: 'cartoons', name: 'Мультфильмы', type: 'KIDS_ANIMATION_THEME'}, {id: 'upcoming', name: 'Скоро', type: 'CLOSES_RELEASES'}]},
     vokino: {name: 'VoKino', tabs: [{id: 'overview', name: 'Обзор'}].concat(VoKinoSections.all().map(function (d) { return {id: d.id, name: d.name}; }))},
-    ivi: {name: 'Иви', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'movies', name: 'Фильмы', category: 14}, {id: 'series', name: 'Сериалы', category: 15}, {id: 'cartoons', name: 'Мультфильмы', category: 17}]}
+    ivi: {name: 'Иви', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'movies', name: 'Фильмы', category: 14}, {id: 'series', name: 'Сериалы', category: 15}, {id: 'cartoons', name: 'Мультфильмы', category: 17}]},
+    myshows: {name: 'MyShows', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'popular', name: 'Топ сериалов'},
+      {id: 'watching', name: 'Смотрю'}, {id: 'later', name: 'Буду смотреть'}, {id: 'finished', name: 'Просмотрено'}]}
   };
   function known(id) { return Object.prototype.hasOwnProperty.call(defs, id); }
   function tab(service, id) { var rows = known(service) ? defs[service].tabs : []; for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i]; return null; }
   function order(values, defaults) { var out = []; (Array.isArray(values) ? values : []).concat(defaults).forEach(function (id) { if (defaults.indexOf(id) >= 0 && out.indexOf(id) < 0) out.push(id); }); return out; }
-  var fallbackEnabled = ['vokino'];
+  var fallbackEnabled = ['vokino', 'myshows'];
   if (TopControls.kinopoiskApp() && KinopoiskCatalog.hasKey()) fallbackEnabled.push('kinopoisk');
   if (TopControls.iviApp()) fallbackEnabled.push('ivi');
   var saved; try { saved = JSON.parse(localStorage.getItem(KEY)); } catch (e) {}
-  var settings = {order: order(saved && saved.order, ['kinopoisk', 'vokino', 'ivi']), enabled: saved && Array.isArray(saved.enabled) ? saved.enabled.filter(known) : fallbackEnabled, tabs: {}};
+  var enabled = saved && Array.isArray(saved.enabled) ? saved.enabled.filter(known) : fallbackEnabled;
+  if (saved && !(saved.tabs && saved.tabs.myshows) && enabled.indexOf('myshows') < 0) enabled.push('myshows');
+  var settings = {order: order(saved && saved.order, ['kinopoisk', 'vokino', 'ivi', 'myshows']), enabled: enabled, tabs: {}};
   Object.keys(defs).forEach(function (id) {
     var value = saved && saved.tabs && saved.tabs[id], ids = defs[id].tabs.map(function (t) { return t.id; });
-    var active = id === 'vokino' ? ['overview'].concat(VoKinoSections.all().filter(function (d) { return d.enabled; }).map(function (d) { return d.id; })) : id === 'kinopoisk' ? ['overview', 'popular', 'movies', 'series'] : ['overview', 'movies', 'series'];
+    var active = id === 'vokino' ? ['overview'].concat(VoKinoSections.all().filter(function (d) { return d.enabled; }).map(function (d) { return d.id; })) : id === 'kinopoisk' ? ['overview', 'popular', 'movies', 'series'] : id === 'myshows' ? ids : ['overview', 'movies', 'series'];
     settings.tabs[id] = {order: order(value && value.order, ids), enabled: value && Array.isArray(value.enabled) ? value.enabled.filter(function (key) { return ids.indexOf(key) >= 0; }) : active};
   });
   function services() { return settings.order.map(function (id) { return {id: id, name: defs[id].name, enabled: settings.enabled.indexOf(id) >= 0}; }); }

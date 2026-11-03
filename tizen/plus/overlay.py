@@ -22,7 +22,7 @@ def apply(files):
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
     index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="kinopoisk-availability.js"></script>\n<script src="kinopoisk-search.js"></script>\n<script src="ivi-search.js"></script>\n<script src="combined-search.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
-    index = replace_once(index, '<script src="home.js"></script>', '<script src="catalog-config.js"></script>\n<script src="catalog-feeds.js"></script>\n<script src="home.js"></script>', 'catalogue models before home')
+    index = replace_once(index, '<script src="home.js"></script>', '<script src="catalog-config.js"></script>\n<script src="myshows.js"></script>\n<script src="catalog-feeds.js"></script>\n<script src="home.js"></script>', 'catalogue models before home')
     index = replace_once(index, '<script src="favorites.js"></script>', '<script src="favorites.js"></script>\n<script src="catalog-home.js"></script>', 'service rows after launcher initialization')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
@@ -51,8 +51,8 @@ def apply(files):
     home = replace_once(home, 'Math.min(5, st.top + dx)', 'Math.min(6, st.top + dx)', 'search button remote focus')
     home = replace_once(home, 'else openSettings();\n        return;\n      case Z.CARDS:',
         'else if (st.top === 6) VoKinoSearch.open();\n        else openSettings();\n        return;\n      case Z.CARDS:', 'open search from remote')
-    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'dock-style' || st.zone === 'combined-search' || st.zone === 'ivi-search' || st.zone === 'kinopoisk-key' || st.zone === 'kinopoisk-search' || st.zone === 'vokino-search' || ", 'custom panels block screensaver')
-    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.CombinedSearch) CombinedSearch.close(false);\n    if (window.IviSearch) IviSearch.close(false);\n    if (window.KinopoiskSearch) KinopoiskSearch.close(false);\n    if (window.KinopoiskCatalog) KinopoiskCatalog.closeKey(false);\n    if (window.DockStyle) DockStyle.close(false);\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close custom panels with sheets')
+    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'dock-style' || st.zone === 'myshows-profile' || st.zone === 'combined-search' || st.zone === 'ivi-search' || st.zone === 'kinopoisk-key' || st.zone === 'kinopoisk-search' || st.zone === 'vokino-search' || ", 'custom panels block screensaver')
+    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.MyShowsCatalog) MyShowsCatalog.close(false);\n    if (window.CombinedSearch) CombinedSearch.close(false);\n    if (window.IviSearch) IviSearch.close(false);\n    if (window.KinopoiskSearch) KinopoiskSearch.close(false);\n    if (window.KinopoiskCatalog) KinopoiskCatalog.closeKey(false);\n    if (window.DockStyle) DockStyle.close(false);\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close custom panels with sheets')
     home = replace_once(home, 'hideSaver: hideSaver, toast: toast', 'hideSaver: hideSaver, toast: toast, poke: poke', 'search activity resets idle timer')
     home = replace_once(home, 'shelf = out;', 'shelf = out;\n    VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));', 'synchronize favorite app targets')
     home = replace_once(home, "label: tr('Shelf'), value:", "label: 'Избранные приложения', value:", 'favorites setting name')
@@ -73,7 +73,7 @@ def apply(files):
     home = replace_once(home, 'state: st, move: move, activate: activate,',
         'state: st, move: move, activate: activate, showDockSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].dockStyle) st.row = i; updateFocus(); }, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'custom settings and favorites editor access')
     home = replace_once(home, "var s = TV.name !== 'browser' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);",
-        "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) || (window.KinopoiskSearch && KinopoiskSearch.isOpen()) || (window.IviSearch && IviSearch.isOpen()) || (window.CombinedSearch && CombinedSearch.isOpen()) || st.zone === 'kinopoisk-key' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
+        "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) || (window.KinopoiskSearch && KinopoiskSearch.isOpen()) || (window.IviSearch && IviSearch.isOpen()) || (window.CombinedSearch && CombinedSearch.isOpen()) || st.zone === 'myshows-profile' || st.zone === 'kinopoisk-key' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
     home = replace_once(home,
         'if (dx) st.card = Math.max(0, Math.min(cards.length - 1, st.card + dx));',
         '''if (dx) {
@@ -107,10 +107,10 @@ def apply(files):
     home = configure_sections(home)
     home = configure_top_controls(home)
     home = replace_once(home, '    followSoon();', '    followSoon();\n    if (window.CatalogHome) CatalogHome.paint();', 'catalogue focus follows launcher focus')
-    home = replace_once(home, "      {label: 'Разделы VoKino',", "      {label: 'Каталоги и вкладки', value: '›', catalogs: true, step: function (d) { if (d >= 0) CatalogConfig.open(); }},\n      {label: 'Разделы VoKino',", 'catalogue configuration setting')
+    home = replace_once(home, "      {label: 'Разделы VoKino',", "      {label: 'Каталоги и вкладки', value: '›', catalogs: true, step: function (d) { if (d >= 0) CatalogConfig.open(); }},\n      {label: 'Профиль MyShows', value: MyShowsCatalog.profile() || 'Не подключен', opens: true, myshows: true, step: function (d) { if (d >= 0) MyShowsCatalog.open(); }},\n      {label: 'Разделы VoKino',", 'catalogue configuration setting')
     home = replace_once(home, "function sheetOpen() { return ", "function sheetOpen() { return st.zone === 'catalog-config' || ", 'catalogue configuration blocks screensaver')
     home = replace_once(home, 'function closeSheets() {', 'function closeSheets() {\n    if (window.CatalogConfig) CatalogConfig.close(false);', 'close catalogue configuration with sheets')
-    home = replace_once(home, 'state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, showCatalogSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].catalogs) st.row = i; updateFocus(); },', 'return to catalogue configuration setting')
+    home = replace_once(home, 'state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, showMyShowsSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].myshows) st.row = i; updateFocus(); }, showCatalogSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].catalogs) st.row = i; updateFocus(); },', 'return to catalogue configuration setting')
     if '<tizen:service ' in manifest:
         raise ValueError('Upstream now declares a service; review before combining')
     service = '''    <feature name="http://tizen.org/feature/web.service"/>
@@ -138,6 +138,7 @@ def apply(files):
                   'combined-search.js': (ROOT / 'combined-search.js').read_bytes(),
                   'ivi-search.js': (ROOT / 'ivi-search.js').read_bytes(),
                   'catalog-config.js': (ROOT / 'catalog-config.js').read_bytes(),
+                  'myshows.js': (ROOT / 'myshows.js').read_bytes(),
                   'catalog-feeds.js': (ROOT / 'catalog-feeds.js').read_bytes(),
                   'catalog-home.js': (ROOT / 'catalog-home.js').read_bytes(),
                   'catalog-home.css': (ROOT / 'catalog-home.css').read_bytes(),

@@ -43,6 +43,8 @@ class BuildTests(unittest.TestCase):
         self.assertLess(app['index.html'].index(b'ivi-search.js'), app['index.html'].index(b'combined-search.js'))
         self.assertIn(b'CombinedSearch.restore(saved.combinedSearch)', app['home.js'])
         self.assertIn(b'catalog-config.js', app['index.html'])
+        self.assertLess(app['index.html'].index(b'myshows.js'), app['index.html'].index(b'catalog-feeds.js'))
+        self.assertIn(b'MyShowsCatalog.open()', app['home.js'])
         self.assertIn(b'catalog-home.css', app['index.html'])
         self.assertLess(app['index.html'].index(b'home.js'), app['index.html'].index(b'catalog-home.js'))
         self.assertIn(b'CatalogHome.restore(saved.catalog)', app['home.js'])

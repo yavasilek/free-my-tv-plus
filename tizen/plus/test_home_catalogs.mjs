@@ -11,7 +11,7 @@ const box={Date,Promise,AbortController,setTimeout,clearTimeout,document:{addEve
  Prefs:{cards:()=>cards},Data:{picks:()=>[],settingsChanged(){}},VoKinoBridge:{sectionsChanged(){},turnPage:()=>false}};
 box.window=box;vm.createContext(box);vm.runInContext(read('./vokino-sections.js'),box);vm.runInContext(read('./catalog-config.js'),box);vm.runInContext(read('./catalog-feeds.js'),box);
 const config=box.CatalogConfig,feeds=box.CatalogFeeds;
-assert.deepEqual(Array.from(config.services(),s=>s.id),['kinopoisk','vokino','ivi']);assert.equal(config.services().every(s=>s.enabled),true);
+assert.deepEqual(Array.from(config.services(),s=>s.id),['kinopoisk','vokino','ivi','myshows']);assert.equal(config.services().every(s=>s.enabled),true);
 assert.deepEqual(Array.from(config.tabs('vokino'),t=>t.id),['overview','new','history'],'Existing VoKino selection and order migrate');
 config.moveService('ivi',-1);config.moveService('ivi',-1);assert.equal(config.services()[0].id,'ivi');
 config.enableTab('ivi','overview',false);config.moveTab('ivi','series',-1);config.moveTab('ivi','series',-1);assert.deepEqual(Array.from(config.tabs('ivi'),t=>t.id),['series','movies']);

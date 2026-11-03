@@ -36,13 +36,26 @@
         .then(function () { clearTimeout(timer); active--; delete running[job.key]; emit(); pump(); });
     })(queue.shift());
   }
+  function mix(groups) {
+    var mixed = [], seen = {};
+    for (var i = 0; i < 20; i++) groups.forEach(function (group) {
+      var p = group[i], key = p && (p.type || '') + ':' + p.id;
+      if (p && !seen[key]) { seen[key] = true; mixed.push(p); }
+    });
+    return mixed;
+  }
   function picks(service, tab, page) {
+    if (service === 'myshows') {
+      var items = tab === 'overview' ? mix(CatalogConfig.tabs(service).filter(function (t) {
+        return t.id !== 'overview';
+      }).map(function (t) { return MyShowsCatalog.items(t.id); })) : MyShowsCatalog.items(tab);
+      return items.slice((page - 1) * Prefs.cards(), page * Prefs.cards());
+    }
     if (service === 'vokino') return Data.picks(tab === 'overview' ? null : 'vokino-' + tab).map(function (p) { return {id: p.id, title: p.title, poster: p.poster, meta: p.meta, app: p.app}; });
     if ((service === 'kinopoisk' && (!TopControls.kinopoiskApp() || !KinopoiskCatalog.hasKey())) || (service === 'ivi' && !TopControls.iviApp())) return [];
     if (tab === 'overview') {
-      var groups = CatalogConfig.tabs(service).filter(function (t) { return t.id !== 'overview'; }).map(function (t) { ensure(service, t.id, 1); return (cache[cacheKey(service, t.id, 1)] || {}).items || []; }), mixed = [], seen = {};
-      for (var i = 0; i < 20; i++) groups.forEach(function (group) { var p = group[i], key = p && (p.type || '') + ':' + p.id; if (p && !seen[key]) { seen[key] = true; mixed.push(p); } });
-      return mixed.slice((page - 1) * Prefs.cards(), page * Prefs.cards());
+      var groups = CatalogConfig.tabs(service).filter(function (t) { return t.id !== 'overview'; }).map(function (t) { ensure(service, t.id, 1); return (cache[cacheKey(service, t.id, 1)] || {}).items || []; });
+      return mix(groups).slice((page - 1) * Prefs.cards(), page * Prefs.cards());
     }
     var count = Prefs.cards(), size = service === 'kinopoisk' ? 20 : 16, start = (page - 1) * count, sourcePage = Math.floor(start / size) + 1, offset = start % size;
     ensure(service, tab, sourcePage); var value = cache[cacheKey(service, tab, sourcePage)], items = value && value.items || [];
@@ -51,11 +64,15 @@
   }
   function next(service, tab, page) {
     if (service === 'vokino') return VoKinoBridge.turnPage(tab === 'overview' ? null : 'vokino-' + tab, 1);
-    if (tab === 'overview') return picks(service, tab, page + 1).length > 0;
+    if (tab === 'overview' || service === 'myshows') return picks(service, tab, page + 1).length > 0;
     var count = Prefs.cards(), size = service === 'kinopoisk' ? 20 : 16, end = page * count, sourcePage = Math.floor((end - 1) / size) + 1, value = cache[cacheKey(service, tab, sourcePage)];
     return !!value && (value.items.length > (end - 1) % size + 1 || !!value.nextPage);
   }
   function status(service, tab, page) {
+    if (service === 'myshows') {
+      var sources = tab === 'overview' ? CatalogConfig.tabs(service).filter(function (t) { return t.id !== 'overview'; }) : [{id: tab}];
+      return sources.length ? MyShowsCatalog.status(sources[0].id) : 'Включите вкладки MyShows в настройках';
+    }
     if (service === 'kinopoisk' && !TopControls.kinopoiskApp()) return 'Добавьте Кинопоиск в избранные приложения';
     if (service === 'kinopoisk' && !KinopoiskCatalog.hasKey()) return 'Добавьте ключ поиска Кинопоиска в настройках';
     if (service === 'ivi' && !TopControls.iviApp()) return 'Добавьте Иви в избранные приложения';

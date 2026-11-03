@@ -134,6 +134,7 @@
     opened = false; stopValueWatch(); clearTimeout(typingTimer); typingTimer = 0; input.blur(); modal.classList.remove('open'); bridge.cancelSearch();
     if (options.visible) options.visible([], paint);
     window.dispatchEvent(new Event('resize'));
+    if (restore !== false && options.returnTo && options.returnTo()) return;
     if (restore !== false && window.FreeMyTV) {
       FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = (window.VoKinoSections ? VoKinoSections.tabs().length : 3) + options.slot; FreeMyTV.move(0, 0); touch();
     }
@@ -184,6 +185,7 @@
     revision: 2,
     open: function () { if (options.allowed && !options.allowed()) return; open(null, true); }, close: close,
     restore: function (selection) { open(selection, false); },
+    openQuery: function (query) { open(null, false); input.value = observedValue = query; run(1); },
     selection: function () { return opened ? {cursor: cursor} : null; },
     submit: function () { run(1); }, refresh: refresh, isOpen: function () { return opened; }
   };

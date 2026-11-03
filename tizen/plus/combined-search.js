@@ -16,7 +16,7 @@
   ];
   sources.forEach(function (source) { selected[source.id] = !saved.sources || saved.sources[source.id] !== false; });
   var state = {query: '', page: 1, items: [], nextPage: 0, loading: false, opening: false, error: '', retry: false};
-  var plans = {}, progress = {}, running = [], generation = 0, view;
+  var plans = {}, progress = {}, running = [], generation = 0, view, origin = null;
 
   function cancel() {
     generation++;
@@ -102,12 +102,13 @@
     var position = view.selection();
     if (!position) return null;
     var result = state.items[position.cursor];
-    return {query: state.query, page: state.page, plans: plans, cursor: position.cursor,
+    return {query: state.query, page: state.page, plans: plans, cursor: position.cursor, origin: origin,
       source: result ? result.source.id : '', id: result ? result.item.id : '', type: result ? result.item.type : ''};
   }
 
   function restore(value) {
-    if (!enabled || !value || typeof value.query !== 'string') return;
+    if (!value || (!enabled && !value.origin) || typeof value.query !== 'string') return;
+    origin = value.origin || null;
     function index() {
       return state.items.findIndex(function (result) {
         return result.source.id === value.source && result.item.id === value.id && result.item.type === value.type;
@@ -137,6 +138,10 @@
   view = createMovieSearch({bridge: {searchState: state, search: search, cancelSearch: cancel},
     id: 'combined-search', name: 'Общий поиск', title: 'Общий поиск', where: 'выбранных сервисах', slot: 6,
     incremental: true, status: status, allowed: function () { return enabled; },
+    returnTo: function () {
+      if (!origin || !window.CatalogHome) return false;
+      var previous = origin; origin = null; CatalogHome.restore(previous); return true;
+    },
     image: function (result) { return result.source.image(result.item); },
     launch: function (result, done) {
       if (!result.source.available()) { done(false, 'Сервис сейчас недоступен. Проверьте настройки поиска.'); return; }
@@ -152,9 +157,10 @@
   });
 
   window.CombinedSearch = {open: function () {
-      view.open();
+      origin = null; view.open();
       if (view.isOpen() && state.retry && state.query.length >= 2) search(state.query, 1, view.refresh);
     }, close: view.close, isOpen: view.isOpen, selection: selection, restore: restore,
+    openForTitle: function (title, previous) { origin = previous; view.openQuery(title); },
     enabled: function () { return enabled; },
     settings: function () {
       var rows = [{label: 'Кнопка «Общий поиск»', toggle: enabled, step: function () { enabled = !enabled; save(); }}];

@@ -92,6 +92,23 @@ try{
     if(q==='ошибка')return route.fulfill({status:401,json:{}});
     return route.fulfill({json:{films:q==='пусто'?[]:Array.from({length:20},(_,i)=>({filmId:page*100+i+1,nameRu:q+' '+i,year:'2024',rating:'7.5',posterUrlPreview:'https://kinopoiskapiunofficial.tech/images/posters/kp_small/fixture.jpg'})),pagesCount:q==='пусто'?0:2}});
   });
+  const myShowsCalls=[];
+  await full.route('https://api.myshows.ru/v2/rpc/',route=>{
+    const {method,params,id}=route.request().postDataJSON();
+    myShowsCalls.push({method,params,authorization:route.request().headers().authorization});
+    const show=(id,title)=>({id,title,year:2024,rating:4.6});
+    const profile=[
+      {show:show(901,'Тьма'),watchStatus:'watching',watchedEpisodes:3,totalEpisodes:26},
+      {show:show(902,'Разделение'),watchStatus:'later',watchedEpisodes:0,totalEpisodes:19},
+      {show:show(903,'Шерлок'),watchStatus:'finished',watchedEpisodes:13,totalEpisodes:13},
+      {show:show(904,'Архив'),watchStatus:'cancelled'}
+    ];
+    const json={jsonrpc:'2.0',id};
+    if(method==='shows.Top')json.result=Array.from({length:25},(_,i)=>({show:show(100+i,'Сериал '+i)}));
+    else if(method==='profile.Shows'&&params.login==='public_demo')json.result=profile;
+    else json.error={code:403};
+    return route.fulfill({json});
+  });
   const availabilityChecks=[];
   await full.route('https://graphql.kinopoisk.ru/graphql/**',route=>{
     const body=route.request().postDataJSON(),id=parseInt(body.variables.id,16);availabilityChecks.push(id);
@@ -233,8 +250,9 @@ try{
   await full.keyboard.press('ArrowUp');assert.equal(await full.eval(()=>FreeMyTV.state.top),tabCount+2);
   await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'catalog-tabs');
   await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'catalog-cards');
-  await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'shelf');
-  for(let i=0;i<3;i++)await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
+  await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>CatalogHome.selection().service),'myshows');
+  await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'shelf');
+  for(let i=0;i<5;i++)await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
   const utilityRows=await full.eval(()=>Array.from(document.querySelectorAll('#settings .row')).map(r=>r.textContent));
   for(const name of ['Кнопка «Телеканалы»','Кнопка «Входы HDMI»']){
     const at=utilityRows.findIndex(text=>text.includes(name));assert.ok(at>=0);
@@ -345,7 +363,7 @@ try{
   assert.equal(await full.eval(()=>CatalogConfig.isOpen()),true);
   await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter');
   await full.keyboard.press('ArrowUp');await full.keyboard.press('ArrowUp');await full.keyboard.press('Enter');
-  assert.deepEqual(await full.eval(()=>CatalogConfig.services().map(s=>s.id)),['ivi','kinopoisk','vokino']);
+  assert.deepEqual(await full.eval(()=>CatalogConfig.services().map(s=>s.id)),['ivi','kinopoisk','vokino','myshows']);
   await full.keyboard.press('ArrowLeft');await full.keyboard.press('Enter');
   assert.equal(await full.eval(()=>document.querySelector('[data-service="ivi"]')),null,'Hidden service row disappears immediately');
   await full.keyboard.press('Enter');
@@ -357,7 +375,7 @@ try{
   await full.screenshot({path:path.join(root,'out/plus-tests/catalog-settings.png')});
   await full.keyboard.press('Escape');await full.keyboard.press('Escape');await full.keyboard.press('Escape');
   await full.waitForFunction(()=>document.querySelectorAll('[data-service="ivi"] .catalog-card').length===16&&document.querySelectorAll('[data-service="kinopoisk"] .catalog-card').length===16);
-  assert.deepEqual(await full.eval(()=>Array.from(document.querySelectorAll('.catalog-row')).map(e=>e.dataset.service)),['ivi','kinopoisk','vokino']);
+  assert.deepEqual(await full.eval(()=>Array.from(document.querySelectorAll('.catalog-row')).map(e=>e.dataset.service)),['ivi','kinopoisk','vokino','myshows']);
   await full.eval(()=>{document.getElementById('catalog-home').scrollTop=0;CatalogHome.paint();});
   assert.equal(await full.eval(()=>Array.from(document.querySelectorAll('[data-service="vokino"] .catalog-poster')).some(e=>e.getAttribute('src'))),false,'Offscreen service posters stay unloaded');
   await full.eval(()=>CatalogHome.focus('ivi','tabs'));
@@ -367,6 +385,7 @@ try{
   await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>CatalogHome.selection().service),'kinopoisk');
   assert.equal(await full.eval(()=>FreeMyTV.state.zone),'catalog-tabs');
   await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>CatalogHome.selection().service),'vokino');
+  await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>CatalogHome.selection().service),'myshows');
   await full.keyboard.press('ArrowDown');await full.keyboard.press('ArrowDown');assert.equal(await full.eval(()=>FreeMyTV.state.zone),'shelf');
   await full.eval(()=>CatalogHome.focus('kinopoisk','cards'));
   await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowRight');
@@ -376,7 +395,7 @@ try{
   await full.reload();await full.waitForFunction(()=>window.CatalogHome&&FreeMyTV.state.zone==='catalog-cards');
   assert.equal(await full.eval(()=>CatalogHome.selection().service),'kinopoisk');
   assert.equal(await full.eval(()=>CatalogHome.selection().choices.kinopoisk.card),2);
-  assert.deepEqual(await full.eval(()=>CatalogConfig.services().map(s=>s.id)),['ivi','kinopoisk','vokino'],'Service order survives reload and app return');
+  assert.deepEqual(await full.eval(()=>CatalogConfig.services().map(s=>s.id)),['ivi','kinopoisk','vokino','myshows'],'Service order survives reload and app return');
   assert.deepEqual(await full.eval(()=>CatalogConfig.tabs('ivi').map(t=>t.id)),['series','movies']);
   // The combined screen shares providers and the IME, but owns its query, source preferences and return selection.
   await full.eval(()=>{FreeMyTV.editFavorites();FreeMyTV.state.edit=Array.from(document.querySelectorAll('#shelfedit .favorite-name')).findIndex(r=>r.textContent==='VoKino');FreeMyTV.move(0,0);});
@@ -447,13 +466,50 @@ try{
   await full.waitForFunction(()=>document.querySelector('#combined-search .search-status').textContent.includes('VoKino · 12'));
   assert.deepEqual(combinedCalls.map(r=>r[0]).sort(),['kinopoisk','vokino'],'Deselected source stays excluded after restart');
   await full.keyboard.press('Enter');await full.keyboard.press('ArrowRight');
-  await full.waitForFunction(()=>document.querySelector('#combined-search .search-page-label').textContent==='Страница 2');
+  await full.waitForFunction(()=>document.querySelector('#combined-search .search-page-label').textContent==='Страница 2'&&document.querySelector('#combined-search .search-status').textContent.includes('Кинопоиск · 20'));
   assert.ok(combinedCalls.some(r=>r[0]==='kinopoisk'&&r[2]==='2'));
   await full.keyboard.press('Escape');
   await openSettings();await toggleCombinedSetting('Кнопка «Общий поиск»');
   assert.equal(await full.eval(()=>TopControls.slots().includes(6)),false);
+  await full.keyboard.press('Escape');
+  await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===16);
+  assert.equal(myShowsCalls.some(r=>r.method==='profile.Shows'),false,'No profile requests before a username is entered');
+  const openMyShows=async()=>{
+    await openSettings();
+    await full.eval(()=>{FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent.startsWith('Профиль MyShows'));FreeMyTV.activate();});
+    await full.waitForFunction(()=>document.activeElement.id==='myshows-profile-login');
+  };
+  await openMyShows();
+  await full.setViewport({width:1920,height:568});
+  assert.equal(await full.eval(()=>document.querySelector('#myshows-profile .box').getBoundingClientRect().width),1220);
+  await full.locator('#myshows-profile-login').fill('closed_profile');
+  await full.keyboard.press('Enter');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>document.querySelector('#myshows-profile .search-status').textContent.includes('Профиль закрыт'));
+  assert.equal(await full.eval(()=>MyShowsCatalog.profile()),'');
+  await full.keyboard.press('ArrowLeft');await full.locator('#myshows-profile-login').fill('public_demo');
+  await full.screenshot({path:path.join(root,'out/plus-tests/myshows-profile.png')});
+  await full.keyboard.press('Enter');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>MyShowsCatalog.profile()==='public_demo'&&FreeMyTV.state.zone==='settings');
+  await full.setViewport({width:1920,height:1080});
+  await full.reload();
+  await full.waitForFunction(()=>window.CatalogHome&&MyShowsCatalog.items('watching').length===1);
+  assert.deepEqual(await full.eval(()=>['watching','later','finished'].map(t=>MyShowsCatalog.items(t)[0].title)),['Тьма','Разделение','Шерлок']);
+  assert.ok(myShowsCalls.every(r=>!r.authorization),'Public requests carry no account credentials');
+  await full.eval(()=>CatalogHome.focus('myshows','tabs'));
+  await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowDown');
+  assert.match(await full.locator('[data-service="myshows"] .catalog-card.focus .catalog-meta').textContent(),/3\/26 серий/);
+  await full.screenshot({path:path.join(root,'out/plus-tests/myshows-home.png')});
+  await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>CombinedSearch.isOpen()&&document.getElementById('combined-search-query').value==='Тьма');
+  await full.keyboard.press('Escape');
+  assert.deepEqual(await full.eval(()=>[CatalogHome.selection().service,CatalogHome.selection().choices.myshows.tab,FreeMyTV.state.zone]),['myshows','watching','catalog-cards']);
+  await openMyShows();
+  await full.locator('#myshows-profile-login').fill('');
+  await full.keyboard.press('Enter');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>MyShowsCatalog.profile()===''&&FreeMyTV.state.zone==='settings');
+  assert.equal(await full.eval(()=>MyShowsCatalog.items('watching').length),0);
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
-  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return']}));
+  console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search']}));
 }finally{await browser.close();server.closeAllConnections();await new Promise(r=>server.close(r));}
 process.exit(0);
