@@ -21,7 +21,7 @@ def apply(files):
                          '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
-    index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="kinopoisk-search.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
+    index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="kinopoisk-availability.js"></script>\n<script src="kinopoisk-search.js"></script>\n<script src="ivi-search.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
@@ -48,8 +48,8 @@ def apply(files):
     home = replace_once(home, 'Math.min(5, st.top + dx)', 'Math.min(6, st.top + dx)', 'search button remote focus')
     home = replace_once(home, 'else openSettings();\n        return;\n      case Z.CARDS:',
         'else if (st.top === 6) VoKinoSearch.open();\n        else openSettings();\n        return;\n      case Z.CARDS:', 'open search from remote')
-    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'dock-style' || st.zone === 'kinopoisk-key' || st.zone === 'kinopoisk-search' || st.zone === 'vokino-search' || ", 'custom panels block screensaver')
-    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.KinopoiskSearch) KinopoiskSearch.close(false);\n    if (window.KinopoiskCatalog) KinopoiskCatalog.closeKey(false);\n    if (window.DockStyle) DockStyle.close(false);\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close custom panels with sheets')
+    home = replace_once(home, 'function sheetOpen() { return ', "function sheetOpen() { return st.zone === 'dock-style' || st.zone === 'ivi-search' || st.zone === 'kinopoisk-key' || st.zone === 'kinopoisk-search' || st.zone === 'vokino-search' || ", 'custom panels block screensaver')
+    home = replace_once(home, 'function closeSheets() {', "function closeSheets() {\n    if (window.IviSearch) IviSearch.close(false);\n    if (window.KinopoiskSearch) KinopoiskSearch.close(false);\n    if (window.KinopoiskCatalog) KinopoiskCatalog.closeKey(false);\n    if (window.DockStyle) DockStyle.close(false);\n    if (window.VoKinoSearch) VoKinoSearch.close(false);", 'close custom panels with sheets')
     home = replace_once(home, 'hideSaver: hideSaver, toast: toast', 'hideSaver: hideSaver, toast: toast, poke: poke', 'search activity resets idle timer')
     home = replace_once(home, 'shelf = out;', 'shelf = out;\n    VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));', 'synchronize favorite app targets')
     home = replace_once(home, "label: tr('Shelf'), value:", "label: 'Избранные приложения', value:", 'favorites setting name')
@@ -70,7 +70,7 @@ def apply(files):
     home = replace_once(home, 'state: st, move: move, activate: activate,',
         'state: st, move: move, activate: activate, showDockSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].dockStyle) st.row = i; updateFocus(); }, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'custom settings and favorites editor access')
     home = replace_once(home, "var s = TV.name !== 'browser' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);",
-        "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) || (window.KinopoiskSearch && KinopoiskSearch.isOpen()) || st.zone === 'kinopoisk-key' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
+        "var s = TV.name !== 'browser' || (window.VoKinoSearch && VoKinoSearch.isOpen()) || (window.KinopoiskSearch && KinopoiskSearch.isOpen()) || (window.IviSearch && IviSearch.isOpen()) || st.zone === 'kinopoisk-key' ? window.innerWidth / 1920 : Math.min(window.innerWidth / 1920, window.innerHeight / 1080);", 'native keyboard must not shrink search')
     home = replace_once(home,
         'if (dx) st.card = Math.max(0, Math.min(cards.length - 1, st.card + dx));',
         '''if (dx) {
@@ -90,6 +90,7 @@ def apply(files):
     updateFocus();
     if (saved.zone === 'vokino-search' && window.VoKinoSearch) VoKinoSearch.restore(saved.search);
     if (saved.zone === 'kinopoisk-search' && window.KinopoiskSearch && TopControls.kinopoiskApp()) KinopoiskSearch.restore(saved.kinopoiskSearch);
+    if (saved.zone === 'ivi-search' && window.IviSearch && TopControls.iviApp()) IviSearch.restore(saved.iviSearch);
   }
 
   function reset() {''', 'restore launcher selection')
@@ -122,6 +123,8 @@ def apply(files):
                   'vokino-sections.css': (ROOT / 'vokino-sections.css').read_bytes(),
                   'top-controls.js': (ROOT / 'top-controls.js').read_bytes(),
                   'kinopoisk-search.js': (ROOT / 'kinopoisk-search.js').read_bytes(),
+                  'kinopoisk-availability.js': (ROOT / 'kinopoisk-availability.js').read_bytes(),
+                  'ivi-search.js': (ROOT / 'ivi-search.js').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files
@@ -168,16 +171,21 @@ def configure_sections(home):
 
 
 def configure_top_controls(home):
-    home = replace_once(home, "['search', 'Поиск VoKino']];", "['search', 'Поиск VoKino'], ['kinopoisk', 'Поиск Кинопоиска']];", 'separate Kinopoisk search button')
-    home = replace_once(home, 'for (var b = 0; b < 4; b++) {', 'for (var b = 0; b < 5; b++) {', 'fifth utility button')
-    home = replace_once(home, "else sym(defs[b][0], r);", "else if (defs[b][0] === 'kinopoisk') el('span', 'kinopoisk-search-icon', r, 'К'); else sym(defs[b][0], r);", 'distinct Kinopoisk search mark')
-    home = replace_once(home, 'else if (st.top === TAB_KIND.length + 3) VoKinoSearch.open();', 'else if (st.top === TAB_KIND.length + 3) VoKinoSearch.open();\n        else if (st.top === TAB_KIND.length + 4 && TopControls.kinopoiskApp()) KinopoiskSearch.open();', 'open Kinopoisk search')
+    home = replace_once(home, "['search', 'Поиск VoKino']];", "['search', 'Поиск VoKino'], ['kinopoisk', 'Поиск Кинопоиска'], ['ivi', 'Поиск Иви']];", 'separate catalogue search buttons')
+    home = replace_once(home, 'for (var b = 0; b < 4; b++) {', 'for (var b = 0; b < 6; b++) {', 'six utility buttons')
+    home = replace_once(home, "else sym(defs[b][0], r);", "else if (defs[b][0] === 'kinopoisk' || defs[b][0] === 'ivi') el('span', 'kinopoisk-search-icon', r, defs[b][0] === 'ivi' ? 'И' : 'К'); else sym(defs[b][0], r);", 'distinct catalogue search marks')
+    home = replace_once(home, 'else if (st.top === TAB_KIND.length + 3) VoKinoSearch.open();', 'else if (st.top === TAB_KIND.length + 3 && TopControls.values().vokino) VoKinoSearch.open();\n        else if (st.top === TAB_KIND.length + 4 && TopControls.kinopoiskApp()) KinopoiskSearch.open();\n        else if (st.top === TAB_KIND.length + 5 && TopControls.iviApp()) IviSearch.open();', 'open catalogue search')
     home = replace_once(home, 'VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));', 'VoKinoBridge.setFavorites(shelf.map(function (a) { return a.id; }));\n    if (window.FreeMyTV && FreeMyTV.refreshTopControls) FreeMyTV.refreshTopControls();', 'utility buttons follow favorite membership')
-    home = replace_once(home, "    var names = ['Bitcoin',", "    if (TopControls.kinopoiskApp()) rows.splice(6, 0, {label: 'Кнопка «Поиск Кинопоиска»', toggle: TopControls.values().kinopoisk, step: function () { TopControls.toggle('kinopoisk'); }}, {label: 'Ключ поиска Кинопоиска', value: KinopoiskCatalog.hasKey() ? 'Сохранен' : 'Не задан', kinopoiskKey: true, step: function (d) { if (d >= 0) KinopoiskCatalog.openKey(); }});\n    var names = ['Bitcoin',", 'Kinopoisk settings exist only for favorites')
+    home = replace_once(home, "    var names = ['Bitcoin',", """    var searchRows = [{label: 'Кнопка «Поиск VoKino»', toggle: TopControls.values().vokino, step: function () { TopControls.toggle('vokino'); }}];
+    if (TopControls.kinopoiskApp()) searchRows.push({label: 'Кнопка «Поиск Кинопоиска»', toggle: TopControls.values().kinopoisk, step: function () { TopControls.toggle('kinopoisk'); }});
+    if (TopControls.iviApp()) searchRows.push({label: 'Кнопка «Поиск Иви»', toggle: TopControls.values().ivi, step: function () { TopControls.toggle('ivi'); }});
+    if (TopControls.kinopoiskApp()) searchRows.push({label: 'Ключ поиска Кинопоиска', value: KinopoiskCatalog.hasKey() ? 'Сохранен' : 'Не задан', kinopoiskKey: true, step: function (d) { if (d >= 0) KinopoiskCatalog.openKey(); }});
+    Array.prototype.splice.apply(rows, [6, 0].concat(searchRows));
+    var names = ['Bitcoin',""", 'adjacent catalogue search settings')
     home = replace_once(home, 'var TAB_KIND = VoKinoSections.tabs()', 'var lastUtility = 2;\n  var TAB_KIND = VoKinoSections.tabs()', 'remember the upper utility row')
     home = replace_once(home, 'r.style.left = (1508 + 88 * b)', '''var visible = TopControls.slots(), position = visible.indexOf(b);
       r.style.display = position < 0 ? 'none' : '';
-      r.setAttribute('data-top-action', ['liveTV', 'inputs', 'settings', 'search', 'kinopoisk'][b]);
+      r.setAttribute('data-top-action', ['liveTV', 'inputs', 'settings', 'search', 'kinopoisk', 'ivi'][b]);
       r.style.left = (1772 - 88 * (visible.length - 1 - position))''', 'pack visible upper icons at the right edge')
     home = replace_once(home, '    revealShelf();', '''    revealShelf();
     if (st.zone === Z.TOP && st.top >= TAB_KIND.length && TopControls.slots().indexOf(st.top - TAB_KIND.length) >= 0) lastUtility = st.top - TAB_KIND.length;''', 'remember focused upper action')

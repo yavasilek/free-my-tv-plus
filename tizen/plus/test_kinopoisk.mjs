@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
 const code=fs.readFileSync(new URL('./kinopoisk-search.js',import.meta.url),'utf8');
+const availabilityCode=fs.readFileSync(new URL('./kinopoisk-availability.js',import.meta.url),'utf8');
 const KEY='fmtv.kinopoisk.key.v1',CACHE='fmtv.kinopoisk.search.v1',fake='FAKE_TEST_CREDENTIAL_1234';
 const flush=()=>new Promise(r=>setImmediate(r));
 function film(id=301){return {filmId:id,nameRu:'Пример '+id,year:'2024',rating:'7.5',posterUrlPreview:'https://kinopoiskapiunofficial.tech/images/posters/kp_small/'+id+'.jpg'};}
@@ -15,7 +16,7 @@ function boot(values={}){
     createMovieSearch:o=>{options=o;return {};},
     tizen:{ApplicationControlData:function(key,value){this.key=key;this.value=value;},ApplicationControl:function(op,uri,mime,category,data){this.op=op;this.data=data;},application:{launchAppControl(control,id,yes){launches.push({control,id});yes();}}},
     fetch:async(url,settings)=>{requests.push({url,settings});return {ok:true,status:200,json:async()=>({films:[film()],pagesCount:2})};}};
-  box.window=box;vm.createContext(box);vm.runInContext(code,box);
+  box.window=box;vm.createContext(box);vm.runInContext(availabilityCode,box);vm.runInContext(code,box);
   return {box,store,requests,launches,watched,options,catalog:box.KinopoiskCatalog};
 }
 const app=boot();app.catalog.search('Матрица',1,()=>{});assert.equal(app.requests.length,0);assert.ok(app.catalog.searchState.error);

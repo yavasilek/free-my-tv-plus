@@ -119,7 +119,8 @@
       var s = window.FreeMyTV && FreeMyTV.state;
       if (s) localStorage.setItem('fmtv.return.selection', JSON.stringify({tab: s.tab, tabKey: VoKinoSections.tabs()[s.tab] ? VoKinoSections.tabs()[s.tab].key : null, card: s.card, shelf: s.shelf, zone: s.zone, offsets: bridge.offsets,
         search: window.VoKinoSearch ? VoKinoSearch.selection() : null,
-        kinopoiskSearch: window.KinopoiskSearch ? KinopoiskSearch.selection() : null}));
+        kinopoiskSearch: window.KinopoiskSearch ? KinopoiskSearch.selection() : null,
+        iviSearch: window.IviSearch ? IviSearch.selection() : null}));
     } catch (e) {}
   }
   bridge.takeReturnSelection = function () {

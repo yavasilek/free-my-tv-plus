@@ -23,6 +23,9 @@
 .movie-search .search-name, .movie-search .search-meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .movie-search .search-name { font-size: 30px; line-height: 39px; font-weight: 600; }
 .movie-search .search-meta { font-size: 23px; line-height: 30px; color: #b4b4b4; }
+.movie-search .has-availability .search-result-text { right: 224px; }
+.movie-search .search-availability { position: absolute; right: 14px; top: 23px; max-width: 196px; padding: 4px 8px; font-size: 22px; line-height: 28px; color: #b4b4b4; white-space: nowrap; }
+.movie-search .search-availability.unavailable { border: 1px solid #949494; border-radius: 6px; color: #fff; }
 .movie-search .search-paging { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; }
 .movie-search .search-page { min-width: 152px; height: 56px; border: 2px solid #595959; border-radius: 12px; background: #111; color: #fff; font-size: 26px; }
 .movie-search .search-page:disabled { color: #949494; border-color: #444; }

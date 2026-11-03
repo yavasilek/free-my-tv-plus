@@ -6,6 +6,8 @@
   var state = {query: '', page: 1, items: [], nextPage: 0, loading: false, error: ''};
   function key() { try { return localStorage.getItem(KEY) || ''; } catch (e) { return ''; } }
   function hasKey() { return /^[A-Za-z0-9_-]{16,256}$/.test(key()); }
+  function filmDetails(id, signal) { return fetch(HOST + '/api/v2.2/films/' + id, {headers: {'X-API-KEY': key(), 'Accept': 'application/json'}, credentials: 'omit', redirect: 'error', signal: signal}).then(function (r) { if (!r.ok) throw new Error('Request failed'); return r.json(); }); }
+  var availability = createKinopoiskAvailability(filmDetails);
   function poster(url) { return /^https:\/\/(?:kinopoiskapiunofficial\.tech|st\.kp\.yandex\.net|avatars\.mds\.yandex\.net|image\.openmoviedb\.com)\//.test(url || '') ? url : ''; }
   function normalize(row) {
     var id = String(row && row.filmId || ''), title = row && (row.nameRu || row.nameEn);
@@ -18,6 +20,7 @@
     value = String(value || '').replace(/\s+/g, '');
     if (value && !/^[A-Za-z0-9_-]{16,256}$/.test(value)) return false;
     cancel();
+    availability.clear();
     try { if (value) localStorage.setItem(KEY, value); else localStorage.removeItem(KEY); localStorage.removeItem(CACHE); }
     catch (e) { return false; }
     state.query = ''; state.items = []; state.error = ''; state.page = 1; state.nextPage = 0; return true;
@@ -68,8 +71,7 @@
     if (!app || !hasKey() || !/^[1-9][0-9]{0,9}$/.test(item.id)) { done(false); return; }
     cancel(); var mine = seq, controller = abort = new AbortController(); state.opening = true;
     var timer = setTimeout(function () { controller.abort(); }, 12000);
-    fetch(HOST + '/api/v2.2/films/' + item.id, {headers: {'X-API-KEY': key(), 'Accept': 'application/json'}, credentials: 'omit', redirect: 'error', signal: controller.signal})
-      .then(function (r) { if (!r.ok) throw new Error('Request failed'); return r.json(); })
+    (availability.hdId(item.id) ? Promise.resolve({kinopoiskHDId: availability.hdId(item.id)}) : filmDetails(item.id, controller.signal))
       .then(function (data) {
         if (mine !== seq) return;
         clearTimeout(timer); abort = null;
@@ -150,6 +152,7 @@
   window.addEventListener('resize', function () { if (keyOpen) paintKey(); });
   window.KinopoiskCatalog = {searchState: state, search: search, cancelSearch: cancel, hasKey: hasKey, setKey: setKey, openKey: openKey, closeKey: closeKey};
   window.KinopoiskSearch = createMovieSearch({bridge: KinopoiskCatalog, id: 'kinopoisk-search', name: 'Кинопоиска', where: 'Кинопоиске', appName: 'Кинопоиск', slot: 4,
+    annotation: availability.annotation, visible: availability.visible,
     image: function (p) { return p.poster; }, launch: launch,
     allowed: function () { if (!TopControls.kinopoiskApp()) return false; if (!hasKey()) { openKey('search'); return false; } return true; }});
 })();

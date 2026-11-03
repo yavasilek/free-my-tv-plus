@@ -1,4 +1,4 @@
-- IF working on Free My TV Plus for Samsung, vertical navigation and optional top buttons, VoKino or Kinopoisk search, private API key setup, personal feeds, configurable sections and automatic Overview from all enabled tabs, favorites order, hold-OK editing, dock colors and transparency, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
+- IF working on Free My TV Plus for Samsung, vertical navigation and optional top buttons, VoKino, Kinopoisk or Ivi search, search toggles, watchability badges, private API key setup, personal feeds, configurable sections and automatic Overview from all enabled tabs, favorites order, hold-OK editing, dock colors and transparency, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
 - IF working on the original cross-platform Free My TV builds -> read [[CLAUDE.md]]
 - IF reading the Russian project overview and quick build instructions -> read [[README.md]]
 - IF consulting the preserved original Free My TV installation documentation -> read [[README.upstream.md]]

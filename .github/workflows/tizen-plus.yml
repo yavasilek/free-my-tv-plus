@@ -18,6 +18,7 @@ jobs:
       - run: node tizen/plus/test_suite.mjs
       - run: node tizen/plus/test_autostart.mjs
       - run: node tizen/plus/test_kinopoisk.mjs
+      - run: node tizen/plus/test_catalogs.mjs
       - run: npm ci --prefix tizen/plus
       - run: npx --prefix tizen/plus playwright install --with-deps chromium
       - run: npm test --prefix tizen/plus

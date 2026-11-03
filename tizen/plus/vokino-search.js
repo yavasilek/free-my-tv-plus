@@ -53,15 +53,24 @@
         var p = s.items[index], row = node('button', 'search-result', list); row.type = 'button';
         var poster = node('img', 'search-poster', row); poster.alt = ''; poster.src = options.image ? options.image(p) : Data.image(p.poster || p.backdrop, 'w300');
         var text = node('span', 'search-result-text', row); node('span', 'search-name', text, p.title); node('span', 'search-meta', text, p.meta);
+        var badge = options.annotation ? node('span', 'search-availability', row) : null;
         row.onclick = function () { cursor = index; activate(); };
         row.onmouseover = function () { if (document.activeElement !== input) { cursor = index; paint(); } };
-        rows.push({index: index, element: row});
+        rows.push({index: index, element: row, badge: badge});
       })(i);
     }
     focusClass(input, cursor === -2); focusClass(submit, cursor === -1);
-    rows.forEach(function (r) { focusClass(r.element, r.index === cursor); });
+    rows.forEach(function (r) {
+      focusClass(r.element, r.index === cursor);
+      if (r.badge) {
+        var info = options.annotation(s.items[r.index]);
+        r.badge.hidden = !info; r.badge.textContent = info ? info.text : '';
+        r.element.classList.toggle('has-availability', !!info); r.badge.classList.toggle('unavailable', !!info && info.kind === 'unavailable');
+      }
+    });
     focusClass(previous, cursor === s.items.length && !previous.disabled);
     focusClass(next, cursor === s.items.length + 1 && !next.disabled);
+    if (options.visible) options.visible(rows.map(function (r) { return s.items[r.index]; }), paint);
   }
   function queryValue() { return input.value.replace(/\s+/g, ' ').trim(); }
   function stopValueWatch() { if (valueWatcher) clearInterval(valueWatcher); valueWatcher = 0; }
@@ -108,6 +117,7 @@
   function close(restore) {
     if (!opened) return;
     opened = false; stopValueWatch(); clearTimeout(typingTimer); typingTimer = 0; input.blur(); modal.classList.remove('open'); bridge.cancelSearch();
+    if (options.visible) options.visible([], paint);
     window.dispatchEvent(new Event('resize'));
     if (restore !== false && window.FreeMyTV) {
       FreeMyTV.state.zone = 'top'; FreeMyTV.state.top = (window.VoKinoSections ? VoKinoSections.tabs().length : 3) + options.slot; FreeMyTV.move(0, 0); touch();
