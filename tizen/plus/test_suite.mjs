@@ -7,7 +7,7 @@ function row(id, extra = {}) {return {details: {id, type: 'movie', name: 'Exampl
   poster: 'https://proxy.vokino.org/image/t/p/w600_and_h900_bestv2/example.jpg',
   bg_poster: {backdrop: 'https://proxy.vokino.org/image/t/p/w1280/back.jpg'}, ...extra}};}
 const id1 = '111111111111111111111111', id2 = '222222222222222222222222', id3 = '333333333333333333333333';
-function boot(values = {}, migrate16 = false, initialCards, withService = false) {
+function boot(values = {}, migrate16 = false, initialCards, withService = false, withStarter = false) {
   const store = new Map(Object.entries({'fmtv.cards16.rev':'1',...values}));
   if(migrate16)store.delete('fmtv.cards16.rev');
   const requests = [], launches = [], timers = [];
@@ -19,7 +19,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false)
     Prefs: {cards: () => prefs.cards || 2, shelf: () => prefs.shelf, set: (k, v) => {prefs[k] = v;}},
     Data: {picks: () => [], hasKey: () => false, image: p => p, appFor: () => null, usable: key => key === 'stock', showcase: () => [], settingsChanged() {}},
     TV: {launch: id => launches.push(id)},
-    tizen: {application: {getAppInfo(id) {if(withService||id==='xvvl3S1TT1.TizenTubeStandalone')return {};throw new Error('No service in unit test');},
+    tizen: {application: {getAppInfo(id) {if(id==='FMTVTube01.Starter'&&!withStarter)throw new Error('Starter not installed');if(withStarter||withService||id==='xvvl3S1TT1.TizenTubeStandalone')return {};throw new Error('No service in unit test');},
       launchAppControl(control, app, yes) {launches.push({control, app}); yes();}},
       ApplicationControlData: function (key, value) {this.key = key; this.value = value;},
       ApplicationControl: function (op, uri, mime, category, data) {this.data = data;}},
@@ -42,6 +42,13 @@ assert.equal(smaller.prefs.cards,4,'Later starts leave the user card setting unc
 const a = boot();
 assert.equal(a.requests.length, 0, 'Startup must let the UI draw before network work');
 assert.equal(a.prefs.shelf[0], 'xvvl3S1TT1.TizenTubeStandalone');
+assert.equal(a.store.has('fmtv.youtube.starter.rev'),false,'Do not mark migration before the starter is installed');
+const starterFavorite=boot({},false,16,true,true);
+assert.equal(starterFavorite.prefs.shelf[0],'FMTVTube01.Starter','Use the ready-check launcher when it is installed');
+assert.equal(starterFavorite.prefs.shelf[1],'UMHvZ0dWqo.AnalogWatch','Other favorites retain their order');
+starterFavorite.box.TV.launch('9Ur5IzDKqV.TizenYouTube',null,()=>{});await flush();
+assert.equal(starterFavorite.launches[0],'FMTVTube01.Starter','YouTube shortcut follows the installed favorite');
+assert.equal(starterFavorite.requests[1].url,'http://127.0.0.1:8099/watch/app?appId=FMTVTube01.Starter');
 a.box.VoKinoBridge.refresh(true); await flush();
 assert.equal(a.requests.length, 1, 'Public cards use a single feed request');
 assert.equal(a.box.Data.picks(null).length, 2);

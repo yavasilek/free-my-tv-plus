@@ -8,6 +8,7 @@
   var SEARCH = 'fmtv.vokino.search.v1', searchSeq = 0, searchAbort = null;
   var prefix = 'bridge-vokino:', appId = 'UMHvZ0dWqo.AnalogWatch';
   var youtubeId = 'xvvl3S1TT1.TizenTubeStandalone';
+  var youtubeStarterId = 'FMTVTube01.Starter';
   var serviceAvailable = false;
   var favoriteIds = [];
   var original = {picks: Data.picks, hasKey: Data.hasKey, image: Data.image,
@@ -166,6 +167,7 @@
   bridge.cancelReturn = function () { signal('/cancel-watch'); };
   function notifyVisible() { if (!document.hidden) syncFavorites(function () { signal('/home-visible'); }); }
   TV.launch = function (id, params, done) {
+    if ((id === '9Ur5IzDKqV.TizenYouTube' || id === youtubeId) && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeStarterId) >= 0) id = youtubeStarterId;
     if (id === '9Ur5IzDKqV.TizenYouTube' && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeId) >= 0) id = youtubeId;
     if (typeof id !== 'string' || id.indexOf(prefix) !== 0) return launchWithReturn(id, function () {
       original.launch.call(TV, id, params, function (ok) { if (!ok) signal('/cancel-watch'); if (done) done(ok); });
@@ -298,6 +300,13 @@
       Prefs.set('shelf', shelf.map(function (id) { return id === '9Ur5IzDKqV.TizenYouTube' ? youtubeId : id; }).filter(function (id) { if (seen[id]) return false; seen[id] = true; return true; }));
     }
     localStorage.setItem('fmtv.youtube.favorite.rev', '1');
+    var starterInstalled = false;
+    try { tizen.application.getAppInfo(youtubeStarterId); starterInstalled = true; } catch (e) {}
+    if (starterInstalled && !localStorage.getItem('fmtv.youtube.starter.rev')) {
+      var starterSeen = {};
+      Prefs.set('shelf', Prefs.shelf().map(function (id) { return id === youtubeId ? youtubeStarterId : id; }).filter(function (id) { if (starterSeen[id]) return false; starterSeen[id] = true; return true; }));
+      localStorage.setItem('fmtv.youtube.starter.rev', '1');
+    }
     if (!localStorage.getItem('fmtv.compact.rev')) { Prefs.set('cards', 2); localStorage.setItem('fmtv.compact.rev', '1'); }
     if (!localStorage.getItem('fmtv.cards16.rev')) { Prefs.set('cards', 16); localStorage.setItem('fmtv.cards16.rev', '1'); }
     var cached = stored(CACHE);

@@ -1,5 +1,6 @@
 /* Based on MKsys1337/free-my-tv, b8847dda, tizen/autostart.js (MIT).
- * Observe standby and timer suspension. Launch once per wake, with bounded retries.
+ * Observe standby and timer suspension without taking over the screen at power-on.
+ * Return home only after an application explicitly opened from the favorites closes.
  * Power polling, launcher coordination and diagnostics stay on TV loopback.
  */
 var http = require('http');
@@ -10,16 +11,21 @@ var homeId = 'FreeMyTVio.FreeMyTV';
 var targets = {
   vokino: {appId: 'UMHvZ0dWqo.AnalogWatch', aliases: []},
   youtube: {appId: 'xvvl3S1TT1.TizenTubeStandalone', contexts: ['com.samsung.tv.cobalt-yt'], aliases: ['9Ur5IzDKqV.TizenYouTube']},
+  youtubeStarter: {appId: 'FMTVTube01.Starter', contexts: ['xvvl3S1TT1.TizenTubeStandalone', 'com.samsung.tv.cobalt-yt'], aliases: []},
   emby: {appId: 'vYmY3ACVaa.emby', aliases: []}
 };
-var backgroundServices = ['FreeMyTVio.Autostart', 'xvvl3S1TT1.StandaloneService', 'vYmY3ACVaa.service'];
+var backgroundServices = ['FreeMyTVio.Autostart', 'xvvl3S1TT1.StandaloneService', 'FMTVTube01.StandaloneService', 'vYmY3ACVaa.service'];
 var favorites = [];
 var returning = null, contextPending = false, contextStarted = 0;
-var status = {version: 8, favoritesCount: 0, startedAt: 0, lastTick: 0, lastGap: 0, power: null,
+var status = {version: 9, powerOnLaunch: false, favoritesCount: 0, startedAt: 0, lastTick: 0, lastGap: 0, power: null,
   reason: '', attempts: 0, launchCount: 0, lastLaunchAt: 0, lastResult: '', pollErrors: 0,
   returnState: 'idle', returnTarget: '', returnCount: 0, statusListener: false};
 
 function cancelReturn(reason) { returning = null; status.returnState = reason || 'idle'; }
+function cancelWake(reason) {
+  if (!wake) return;
+  wake = false; launching = false; generation++; status.lastResult = reason;
+}
 function validAppId(id) {
   return typeof id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(id) &&
     id !== homeId && backgroundServices.indexOf(id) < 0 && !/(?:\.service|Service)$/.test(id);
@@ -54,12 +60,17 @@ function visibleApp(id) {
 }
 function appStatus(id, active) {
   if (id === homeId && active) { homeVisible(); return; }
-  if (!returning || !active) return;
+  if (!active) return;
+  var userApp = backgroundServices.indexOf(id) < 0 && !/(?:\.service|Service)$/.test(id) &&
+    (favorites.indexOf(id) >= 0 || visibleApp(id) || !/^(org\.tizen\.|com\.samsung\.)/.test(id));
+  // This also covers the delay/retry between confirming an exit and reopening home.
+  // A newly selected app must win even after the old return watch was cleared.
+  if (userApp) cancelWake('other-app');
+  if (!returning) return;
   if (returning.ids.indexOf(id) >= 0 || returning.aliases.indexOf(id) >= 0) {
     if (returning.ids.indexOf(id) < 0) returning.ids.push(id);
     returning.seen = true; status.returnState = 'watching-app';
-  } else if (returning.seen && backgroundServices.indexOf(id) < 0 && !/(?:\.service|Service)$/.test(id) &&
-      (favorites.indexOf(id) >= 0 || visibleApp(id) || !/^(org\.tizen\.|com\.samsung\.)/.test(id))) cancelReturn('other-app');
+  } else if (returning.seen && userApp) cancelReturn('other-app');
 }
 function checkReturn(now) {
   if (!returning || power !== 'on') return;
@@ -107,10 +118,10 @@ function launch(now) {
 function observe(value) {
   var state = String(value).toLowerCase(), now = Date.now();
   if (state !== 'on' && state !== 'standby') return;
-  var before = power;
   power = status.power = state;
   if (state === 'standby') { cancelReturn('standby'); wake = false; launching = false; generation++; return; }
-  if (before !== 'on' && !wake) requestWake('power-on', now);
+  // Samsung's Autorun Last App owns power-on. A late service start or an event-loop
+  // pause cannot tell whether the owner has already chosen something in Smart Hub.
   launch(now);
   checkReturn(now);
 }
@@ -120,7 +131,7 @@ function poll() {
   lastTick = status.lastTick = now;
   if (gap > 4000) {
     // Instant On can freeze this runtime before it ever reads "standby".
-    status.lastGap = gap; cancelReturn('timer-resume'); requestWake('timer-resume', now);
+    status.lastGap = gap; cancelReturn('timer-resume'); cancelWake('timer-resume');
     pending = false;
     if (active) { try { active.destroy(); } catch (e) {} active = null; }
   }

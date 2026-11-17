@@ -2,3 +2,4 @@
 - IF working on the original cross-platform Free My TV builds -> read [[CLAUDE.md]]
 - IF reading the Russian project overview and quick build instructions -> read [[README.md]]
 - IF consulting the preserved original Free My TV installation documentation -> read [[README.upstream.md]]
+- IF fixing power-on takeover, delayed return cancellation or TizenTube+ cold-start readiness -> read [[tizen/plus/README.md]]
