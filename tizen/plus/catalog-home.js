@@ -85,7 +85,10 @@
           button.onclick = function () { selected.card = index; focusRow(id, 'cards'); launch(); };
         });
       }
-      view.status.hidden = items.length > 0; view.status.textContent = selected.tab ? CatalogFeeds.status(id, selected.tab, selected.page) : 'Включите вкладки этого сервиса в настройках';
+      var warning = id === 'vokino' && VoKinoBridge.error;
+      view.box.classList.toggle('catalog-has-warning', !!warning);
+      view.status.classList.toggle('catalog-warning', !!warning);
+      view.status.hidden = items.length > 0 && !warning; view.status.textContent = warning || (selected.tab ? CatalogFeeds.status(id, selected.tab, selected.page) : 'Включите вкладки этого сервиса в настройках');
     });
     if (activeService && !rows.some(function (s) { return s.id === activeService; }) && /^catalog-/.test(FreeMyTV.state.zone)) { activeService = rows.length ? rows[0].id : ''; if (!activeService) utilities(2); }
     focus();

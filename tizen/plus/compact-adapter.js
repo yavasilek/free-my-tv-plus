@@ -55,7 +55,8 @@
     Data.settingsChanged();
   };
   function fresh() {
-    return bridge.generatedAt && bridge.selectedSources === selectionStamp() && bridge.accountKey === owner() && Date.now() / 1000 - bridge.generatedAt < (account() ? 300 : 3600);
+    var age = Date.now() / 1000 - bridge.generatedAt;
+    return !bridge.error && bridge.generatedAt && age >= 0 && bridge.selectedSources === selectionStamp() && bridge.accountKey === owner() && age < (account() ? 60 : 3600);
   }
   Data.hasKey = function () { return true; };
   function count() { return Math.max(1, Math.min(16, Prefs.cards())); }
@@ -207,13 +208,18 @@
     if (typeof fetch !== 'function') { done(new Error('Secure account requests unavailable')); return; }
     var timer, abort = typeof AbortController !== 'undefined' ? new AbortController() : null;
     if (abort) timer = setTimeout(function () { abort.abort(); }, 12000);
-    fetch(url, {redirect: 'error', credentials: 'omit', signal: abort ? abort.signal : undefined}).then(function (r) {
-      if (!r.ok) throw new Error('Catalog HTTP ' + r.status);
+    fetch(url, {redirect: 'error', credentials: 'omit', cache: token ? 'no-store' : 'default', signal: abort ? abort.signal : undefined}).then(function (r) {
+      if (!r.ok) { var failure = new Error('Catalog request failed'); failure.status = r.status; throw failure; }
       return r.json();
     }).then(function (d) {
+      if (d && d.error) {
+        var apiFailure = new Error('Catalog API rejected the request');
+        apiFailure.status = token && /auth|token|авториз|токен/i.test(String(d.message || '') + ' ' + String(d.error)) ? 401 : 502;
+        throw apiFailure;
+      }
       if (!d || d.type !== 'list' || !Array.isArray(d.channels)) throw new Error('Unexpected catalog');
       clearTimeout(timer); done(null, d.channels, nextPath(base, path, d.page && d.page.next));
-    }).catch(function (err) { clearTimeout(timer); done(new Error('Catalog unavailable')); });
+    }).catch(function (err) { clearTimeout(timer); var failure = new Error('Catalog unavailable'); failure.status = err && err.status; done(failure); });
     return abort;
   }
   function nextPath(base, path, next) {
@@ -271,7 +277,7 @@
     if (bridge.inFlight || document.hidden || (!force && fresh())) return;
     bridge.inFlight = true;
     var a = account(), stamp = owner(), selectedSources = selectionStamp();
-    var wanted = VoKinoSections.sources(), results = {}, active = 0, at = 0, completed = 0, successes = 0;
+    var wanted = VoKinoSections.sources(), results = {}, failures = [], authFailed = false, active = 0, at = 0, completed = 0, successes = 0;
     if (bridge.accountKey && bridge.accountKey !== stamp) { bridge.items = []; bridge.generatedAt = 0; }
     bridge.error = ''; Data.settingsChanged();
     function finish() {
@@ -282,6 +288,11 @@
           wanted.forEach(function (d) { items = items.concat(results[d.id] || bridge.items.filter(function (p) { return p.section === d.id; })); });
           bridge.accept(items, Date.now() / 1000, stamp, selectedSources);
         } else { bridge.error = 'Catalog unavailable'; Data.settingsChanged(); }
+        if (failures.length) {
+          bridge.error = authFailed ? 'VoKino: нужно обновить подключение аккаунта. Показаны сохранённые карточки.' :
+            'Не удалось обновить разделы VoKino: ' + failures.join(', ') + '. Показаны сохранённые карточки.';
+          Data.settingsChanged();
+        }
       }
       if (bridge.sectionsDirty || stamp !== owner() || selectionStamp() !== selectedSources) {
         bridge.sectionsDirty = false; setTimeout(function () { bridge.refresh(false); }, 0);
@@ -293,6 +304,7 @@
         active++;
         function done(err, items) {
           if (!err) { results[d.id] = items; successes++; }
+          else { failures.push(d.name); if (d.personal && (err.status === 401 || err.status === 403)) authFailed = true; }
           active--; completed++; pump();
         }
         if (stamp !== owner() || !VoKinoSections.sources().some(function (current) { return current.id === d.id; }) || (d.personal && !a)) done(null, []);
@@ -307,7 +319,10 @@
     else if (!fresh()) setTimeout(function () { bridge.refresh(false); }, 150);
     Data.settingsChanged();
   };
-  function schedule() { if (!document.hidden && !fresh()) setTimeout(function () { bridge.refresh(false); }, 1600); }
+  function schedule(forcePersonal) {
+    var force = forcePersonal === true && !!account() && VoKinoSections.sources().some(function (d) { return d.personal; });
+    if (!document.hidden && (force || !fresh())) setTimeout(function () { bridge.refresh(force); }, 1600);
+  }
   try {
     var shelf = Prefs.shelf();
     var tubeInstalled = false;
@@ -338,9 +353,16 @@
   } catch (e) {}
   bridge.setFavorites(Prefs.shelf(), true);
   function progress() { if (!document.hidden && window.VoKinoProgress) window.VoKinoProgress.resume(account()); }
-  document.addEventListener('visibilitychange', function () { schedule(); notifyVisible(); progress(); });
+  function returned() {
+    if (!document.hidden) {
+      schedule(true); notifyVisible(); progress();
+      setTimeout(function () { if (!document.hidden) schedule(true); }, 5000);
+    }
+  }
+  document.addEventListener('visibilitychange', returned);
+  window.addEventListener('appcontrol', returned);
   bridge.timer = setInterval(schedule, 60000);
-  schedule();
+  schedule(true);
   try { tizen.application.getAppInfo('FreeMyTVio.Autostart'); serviceAvailable = true; tizen.application.launch('FreeMyTVio.Autostart', function () {}, function () {}); } catch (e) {}
   setTimeout(notifyVisible, 0); setTimeout(notifyVisible, 2000); setTimeout(progress, 2000);
 })();

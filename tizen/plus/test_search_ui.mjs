@@ -7,6 +7,8 @@ import {createServer} from 'node:http';
 import assert from 'node:assert/strict';
 const here=path.dirname(fileURLToPath(import.meta.url));
 const root=path.resolve(here,'../..');
+const built=spawnSync(process.env.PYTHON || (process.platform==='win32'?'python':'python3'),[path.join(root,'tizen/build.py'),'--plus','--generic','--preview'],{cwd:root,stdio:'inherit'});
+assert.equal(built.status,0,'Browser checks must use the current source, not an old preview');
 const prepared=spawnSync(process.env.PYTHON || (process.platform==='win32'?'python':'python3'),[path.join(here,'prepare_preview.py')],{stdio:'inherit'});
 assert.equal(prepared.status,0);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -646,6 +648,15 @@ try{
   assert.equal(await full.eval(()=>getComputedStyle(document.querySelector('#saver .side')).backgroundColor),'rgba(15, 15, 17, 0.4)','Photo-saver readings retain 60% background transparency');
   await full.screenshot({path:path.join(root,'out/plus-tests/climate-saver-1.5.png')});
   await full.eval(()=>FreeMyTV.hideSaver());
+  await full.eval(()=>{VoKinoBridge.error='VoKino: нужно обновить подключение аккаунта. Показаны сохранённые карточки.';CatalogHome.focus('vokino','cards');});
+  const warning=full.locator('[data-service="vokino"] .catalog-warning');
+  assert.equal(await warning.isVisible(),true,'A stale feed warning stays visible alongside cached cards');
+  const warningLayout=await full.eval(()=>{
+    const row=document.querySelector('[data-service="vokino"]'),s=row.querySelector('.catalog-status').getBoundingClientRect();
+    return {top:s.top,bottom:s.bottom,rowBottom:row.getBoundingClientRect().bottom,cardsBottom:Math.max(...Array.from(row.querySelectorAll('.catalog-card'),c=>c.getBoundingClientRect().bottom))};
+  });
+  assert.ok(warningLayout.top>=warningLayout.cardsBottom&&warningLayout.bottom<=warningLayout.rowBottom,'Warning occupies its own space below cards');
+  await full.eval(()=>{VoKinoBridge.error='';CatalogHome.refresh();});
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
   console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss','MyShows poster timeouts and exact-ID fallback','MyShows recent episodes, ordering, lazy batching and profile isolation']}));

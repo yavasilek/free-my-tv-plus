@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
 import assert from 'node:assert/strict';
+import './test_vokino_progress.mjs';
 const sectionsCode = fs.readFileSync(new URL('./vokino-sections.js', import.meta.url), 'utf8');
 const code = fs.readFileSync(new URL('./compact-adapter.js', import.meta.url), 'utf8');
 function row(id, extra = {}) {return {details: {id, type: 'movie', name: 'Example',
@@ -10,11 +11,12 @@ const id1 = '111111111111111111111111', id2 = '222222222222222222222222', id3 = 
 function boot(values = {}, migrate16 = false, initialCards, withService = false, withStarter = false) {
   const store = new Map(Object.entries({'fmtv.cards16.rev':'1',...values}));
   if(migrate16)store.delete('fmtv.cards16.rev');
-  const requests = [], launches = [], timers = [];
+  const requests = [], launches = [], timers = [], events = {};
   const prefs = {cards:initialCards,shelf: ['9Ur5IzDKqV.TizenYouTube', 'UMHvZ0dWqo.AnalogWatch','vYmY3ACVaa.emby']};
   const box = {console, AbortController, URL, clearTimeout() {},
     setTimeout(fn, delay) {timers.push({fn, delay}); return timers.length;}, setInterval() {return 1;},
-    document: {hidden: false, addEventListener() {}},
+    addEventListener(type,fn) {events[type]=fn;},
+    document: {hidden: false, addEventListener(type,fn) {events[type]=fn;}},
     localStorage: {getItem: key => store.get(key) || null, setItem: (key, value) => store.set(key, value),removeItem:key=>store.delete(key)},
     Prefs: {cards: () => prefs.cards || 2, shelf: () => prefs.shelf, set: (k, v) => {prefs[k] = v;}},
     Data: {picks: () => [], hasKey: () => false, image: p => p, appFor: () => null, usable: key => key === 'stock', showcase: () => [], settingsChanged() {}},
@@ -31,7 +33,7 @@ function boot(values = {}, migrate16 = false, initialCards, withService = false,
     },
   };
   box.window = box; vm.createContext(box); vm.runInContext(sectionsCode, box); vm.runInContext(code, box);
-  return {box, store, requests, launches, timers, prefs};
+  return {box, store, requests, launches, timers, prefs, events};
 }
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const expanded=boot({},true);
@@ -79,7 +81,7 @@ assert.equal(b.box.VoKinoBridge.turnPage('vokino-history', 1), false);
 assert.equal(b.box.VoKinoBridge.turnPage('vokino-history', -1), true);
 assert.equal(b.box.Data.picks('vokino-history').length, 2);
 assert.equal(b.box.VoKinoBridge.turnPage('vokino-history', -1), false);
-for (const req of b.requests) {assert.equal(req.options.redirect, 'error'); assert.equal(req.options.credentials, 'omit');}
+for (const req of b.requests) {assert.equal(req.options.redirect, 'error'); assert.equal(req.options.credentials, 'omit'); assert.equal(req.options.cache,'no-store');}
 assert.equal(b.store.get('fmtv.vokino.feed.v5').includes(account.token), false, 'Feed cache must never contain credentials');
 b.box.document.hidden = true; b.box.VoKinoBridge.refresh(true); await flush(); assert.equal(b.requests.length, 2);
 b.box.TV.launch('bridge-vokino:' + id1, null, ok => assert.equal(ok, true));
@@ -236,3 +238,14 @@ bounded.box.VoKinoBridge.refresh(true);for(let i=0;i<30&&bounded.box.VoKinoBridg
 assert.equal(bounded.box.VoKinoBridge.inFlight,false);assert.ok(peak<=2,'Section loading cannot exceed two concurrent source requests');
 assert.equal(bounded.requests.filter(r=>r.url.includes('/timeline/')).length,1,'Continue and History share one API fetch');
 console.log('Passed: section visibility/order, automatic Overview from all enabled sources, deduplication, empty selection, persistence, v4 migration, filter-safe pagination and bounded concurrent loading.');
+const stale=boot(Object.fromEntries(b.store));
+stale.box.document.hidden=false;
+stale.box.VoKinoBridge.generatedAt=Date.now()/1000+3600;
+stale.box.VoKinoBridge.refresh(false);await flush();assert.equal(stale.requests.length,2,'Future cache timestamps cannot freeze personal feeds');
+const partial=boot(Object.fromEntries(b.store));partial.box.VoKinoSections.enable('new',true);
+partial.box.fetch=async(url)=>({ok:true,json:async()=>url.includes('/timeline/')||url.includes('/bookmarks/')?{error:true,message:'Token authorization expired'}:{type:'list',channels:[row(id3)],page:{}}});
+partial.box.VoKinoBridge.refresh(true);await flush();await flush();assert.match(partial.box.VoKinoBridge.error,/обновить подключение/,'HTTP 200 authentication errors remain visible despite public successes');assert.ok(partial.box.Data.picks('vokino-history').length,'Retain saved cards while showing refresh failure');
+partial.box.VoKinoBridge.refresh(false);await flush();assert.match(partial.box.VoKinoBridge.error,/обновить подключение/);
+const visible=boot(Object.fromEntries(b.store));visible.events.visibilitychange();
+for(const timer of visible.timers.filter(t=>t.delay===1600))timer.fn();await flush();assert.ok(visible.requests.some(r=>r.url.includes('/timeline/')),'Returning refreshes a fresh personal cache');
+console.log('Passed: private no-store, future timestamps, expired authorization warnings with partial success and return refresh.');

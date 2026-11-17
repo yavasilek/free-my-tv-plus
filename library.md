@@ -1,5 +1,6 @@
 - IF working on Free My TV Plus for Samsung, vertical navigation and optional top buttons, VoKino, Kinopoisk or Ivi search, combined search and source selection, MyShows rankings, recent episodes and public profiles, search toggles, watchability badges, private API key setup, personal feeds, configurable catalog rows and tab order for VoKino, Kinopoisk and Ivi, automatic Overview from all enabled tabs, VoKino photo screensaver and OK action, favorites order, hold-OK editing, dock colors and transparency, autostart, return service, or optional TizenTube personalization -> read [[tizen/plus/README.md]]
 - IF working on the Home Assistant relay for VoKino progress and MyShows -> read [[tizen/plus/README.md]]
+- IF diagnosing stale personal VoKino feeds, expired sessions, card or dock playback baselines and delayed MyShows episode updates -> read [[tizen/plus/README.md]]
 - IF fixing power-on takeover, delayed return cancellation or TizenTube+ cold-start readiness -> read [[tizen/plus/README.md]]
 - IF working on the original cross-platform Free My TV builds -> read [[CLAUDE.md]]
 - IF reading the Russian project overview and quick build instructions -> read [[README.md]]

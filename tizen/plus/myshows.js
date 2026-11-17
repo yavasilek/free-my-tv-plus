@@ -496,12 +496,16 @@
         var result = {};
         (show.episodes || []).forEach(function (episode) {
           if (episode.isSpecial || String(episode.showId) !== ids[0] || !/^[1-9][0-9]{0,8}$/.test(String(episode.id))) return;
-          var dates = [episode.airDateUTC, episode.airDate].filter(Boolean);
-          dates.forEach(function (date) {
-            var match = /^(\d{4}-\d{2}-\d{2})(?:T|\s|$)/.exec(date);
-            if (!match) return;
-            var key = episode.seasonNumber + ':' + episode.episodeNumber + ':' + match[1];
-            if (keys.indexOf(key) < 0) return;
+          keys.forEach(function (key) {
+            var parts = /^([1-9][0-9]*):([1-9][0-9]*):(\d{4}-\d{2}-\d{2})$/.exec(key);
+            if (!parts || Number(parts[1]) !== Number(episode.seasonNumber) || Number(parts[2]) !== Number(episode.episodeNumber)) return;
+            // VoKino may use the translated release date rather than the original premiere.
+            var date = Date.parse(parts[3] + 'T00:00:00Z');
+            var nearby = [episode.airDateUTC, episode.airDate].some(function (value) {
+              var match = /^(\d{4}-\d{2}-\d{2})(?:T|\s|$)/.exec(value || '');
+              return match && Math.abs(Date.parse(match[1] + 'T00:00:00Z') - date) <= 14 * 86400000;
+            });
+            if (!nearby) return;
             if (Object.prototype.hasOwnProperty.call(result, key)) {
               if (result[key] && result[key].id !== episode.id) result[key] = null;
             } else result[key] = episode;

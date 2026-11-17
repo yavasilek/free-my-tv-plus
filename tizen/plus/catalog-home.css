@@ -18,6 +18,8 @@
 .catalog-meta { display: block; padding: 0 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 20px; line-height: 22px; color: #b4b4b4; }
 .catalog-status, .catalog-no-services { position: absolute; left: 4px; top: 85px; color: #b4b4b4; font-size: 25px; line-height: 34px; }
 .catalog-no-services { top: 32px; }
+.catalog-row.catalog-has-warning { height: 354px; }
+.catalog-status.catalog-warning { top: auto; bottom: 2px; right: 4px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 21px; line-height: 30px; }
 #catalog-config h2 { position: static; margin: 0; text-align: left; font-size: 38px; line-height: 48px; }
 .drawer-open #catalog-home { visibility: hidden; }
 body:not(.night) .catalog-name, body:not(.night) .catalog-card { color: #1D1D1F; }
