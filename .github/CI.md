@@ -12,4 +12,6 @@ Version tags (`v*`) and manual dispatch run every existing check job without pat
 
 The separate website Pages workflow is unchanged. Tizen Plus only starts for its code and shared web/build/translation inputs; manual dispatch and tags run its complete suite.
 
+Website publication runs automatically in the upstream repository. A fork opts in by enabling GitHub Pages and setting its repository variable `PUBLISH_WEBSITE` to `true`. This condition only gates website deployment; all application checks still run.
+
 Where a workflow publishes artifacts, publication remains after its checks. Changes to CI scheduling do not authorize a production deployment, SMS send, signature change or billing change.
