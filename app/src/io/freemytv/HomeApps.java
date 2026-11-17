@@ -25,6 +25,7 @@ import android.graphics.drawable.Drawable;
 import android.media.tv.TvContract;
 import android.media.tv.TvInputInfo;
 import android.media.tv.TvInputManager;
+import android.os.Build;
 import android.provider.Settings;
 import android.util.DisplayMetrics;
 import android.view.View;
@@ -210,7 +211,7 @@ final class HomeApps {
             }
             items.add(it);
         }
-        return items;
+        return Prefs.shelfRecent() ? Recent.order(c, items) : items;
     }
 
     private static String[] known(String pkg) {
@@ -283,6 +284,12 @@ final class HomeApps {
         List<Item> items = new ArrayList<>();
         for (String key : topButtonKeys()) {
             Item item = topButton(key);
+            Item box = TOP_LIVE.equals(key) && c != null ? liveButtonInput(c) : null;
+            if (box != null) {   // Home Settings > Live TV button: an HDMI input, under its own name
+                item = action(INPUT, TOP_LIVE, box.label, "live_tv");
+                item.inputId = box.inputId;
+                item.number = box.number;
+            }
             if (TOP_STORE.equals(key)) {
                 item.pkg = c == null ? null : storePackage(c);
                 if (item.pkg == null) continue;   // keep the saved choice, but no dead button on the home screen
@@ -290,6 +297,14 @@ final class HomeApps {
             items.add(item);
         }
         return items;
+    }
+
+    /** Home Settings > Live TV button: the input it opens instead of Live TV, while the TV still lists it; else null. */
+    static Item liveButtonInput(Context c) {
+        String id = Prefs.liveButton();
+        if (id.isEmpty()) return null;
+        for (Item it : allInputs(c)) if (id.equals(it.inputId)) return it;
+        return null;
     }
 
     /** Only native stores with a launcher entry; no browser fallback or package installation. */
@@ -369,6 +384,11 @@ final class HomeApps {
         items.add(shortcut(ALL_APPS, "all", Ui.tr("All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("TV Settings"), "tv_settings"));
+        // Android's list of apps (force stop, clear data, uninstall), where TV Settings opens the maker's own menu: a
+        // Philips TPM171E (Android 8) has no Apps there, and its stock home screen was the way to an app's page (#452).
+        String tvSettings = answers(c, new Intent(Settings.ACTION_SETTINGS));
+        Intent apps = new Intent(Settings.ACTION_MANAGE_APPLICATIONS_SETTINGS);
+        if (tvSettings != null && !tvSettings.equals(answers(c, apps))) device(c, items, "app-settings", Ui.tr("App Settings"), "apps", apps);
         if (!Prefs.recents().equals("off")) items.add(shortcut(RECENTS, "recents", Ui.tr("Recent Apps"), "recents"));   // opt-in (Home Settings)
         // HY300 projectors (Hotack, Allwinner H713): keystone and focus live in the maker's settings app, and the
         // stock home screen was the only way to its Miracast receiver. Each shows only where the TV has it.
@@ -388,6 +408,12 @@ final class HomeApps {
         Item it = shortcut(DEVICE, key, label, symbol);
         it.intent = intent;
         items.add(it);
+    }
+
+    /** The package whose activity answers `intent`, or null. */
+    private static String answers(Context c, Intent intent) {
+        ResolveInfo r = c.getPackageManager().resolveActivity(intent, 0);
+        return r != null ? r.activityInfo.packageName : null;
     }
 
     /** A streaming service's app (the "Watch" button of the featured pick). */
@@ -419,6 +445,28 @@ final class HomeApps {
         if (liveTv(c) != null) items.add(shortcut(LIVE_TV, "live", Ui.tr("Live TV"), "tv"));
         items.addAll(inputs(c, true));
         return items;
+    }
+
+    /** The drawer's inputs in the person's order (Settings > Inputs): the saved order first, an input the TV no
+     *  longer lists keeping its place, then the ones never ordered in the TV's order; the hidden ones stay out. */
+    static List<Item> orderedInputs(Context c) {
+        List<Item> inputs = allInputs(c);
+        List<String> order = Prefs.inputsOrder(), hidden = Prefs.inputsHidden();
+        if (order == null && hidden.isEmpty()) return inputs;
+        List<String> keys = new ArrayList<>();
+        for (Item it : inputs) keys.add(it.key);
+        List<Item> out = new ArrayList<>();
+        for (String key : VisibleOrder.arrange(order, hidden, keys)) {
+            for (Item it : inputs) if (it.key.equals(key)) { out.add(it); break; }
+        }
+        return out;
+    }
+
+    /** Every input the TV lists, for the editor, shown or not. */
+    static List<String[]> inputCandidates(Context c) {
+        List<String[]> out = new ArrayList<>();
+        for (Item it : allInputs(c)) out.add(new String[] {it.key, it.label});
+        return out;
     }
 
     private static List<Item> inputs(Context c) {
@@ -659,6 +707,7 @@ final class HomeApps {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
             a.startActivity(intent, options);
+            if (it.kind == APP) Recent.note(a, it.pkg);
             return true;
         } catch (ActivityNotFoundException | SecurityException e) {
             AppLog.w("couldn't open " + it.label + ": " + e.getMessage());
@@ -666,6 +715,7 @@ final class HomeApps {
             plain.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             try {
                 a.startActivity(plain);
+                Recent.note(a, it.pkg);
                 return true;
             } catch (ActivityNotFoundException | SecurityException e2) {
                 return false;
@@ -677,7 +727,8 @@ final class HomeApps {
      * Fire TV (a TV with Fire OS built in): an HDMI input through Amazon's own input switch, as its home screen does.
      * The standard request goes to Vewd's HbbTV player or to Amazon's Live TV, which both play the antenna's last
      * channel (an app's, like RaiPlay's) instead, and Amazon's input player wants a permission only Amazon's apps have.
-     * The switch takes the port's hardware number: HW2 is HDMI 1. Tested on a Xiaomi Fire TV (MediaTek, Fire OS 8).
+     * The switch usually takes the port's hardware number: HW2 is HDMI 1. On the TCL AFTDEC012E, HDMI 4 is
+     * HW5 but Amazon's own menu sends inputType 10; 5 waits for input data and times out.
      */
     private static final Pattern HW = Pattern.compile("/HW(\\d+)$");
 
@@ -688,8 +739,10 @@ final class HomeApps {
                 "com.amazon.tv.inputpreference.service.KaminoInputSwitchService"));
         if (c.getPackageManager().resolveService(sw, 0) == null) return false;
         try {
-            if (c.startService(sw.putExtra("inputType", Integer.parseInt(m.group(1)))) == null) return false;
-            AppLog.w("Fire TV input: HW" + m.group(1) + " for " + it.label);   // another board may number its ports differently
+            int hardware = Integer.parseInt(m.group(1));
+            int inputType = "AFTDEC012E".equalsIgnoreCase(Build.MODEL) && hardware == 5 ? 10 : hardware;
+            if (c.startService(sw.putExtra("inputType", inputType)) == null) return false;
+            AppLog.w("Fire TV input: HW" + hardware + " (type " + inputType + ") for " + it.label);
             return true;
         } catch (RuntimeException e) {
             AppLog.w("Amazon's input switch: " + e.getMessage());

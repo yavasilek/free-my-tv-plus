@@ -45,6 +45,8 @@ final class Prefs {
             KEY_SONY_PLAY = SONY_KEY + 587;   // the Google Play button of older remotes: BUTTON_8 (BRAVIA 4K UR3, Android 10)
     /** The SonyLIV button of the BRAVIA VU31's remote (India, Google TV 14), a key code of its own (#395). */
     static final int KEY_SONY_LIV = 3004;
+    /** The gear on Sony's Google TV remotes (BRAVIA 8 II): NOTIFICATION, which only launcherx's dashboard answers. */
+    static final int KEY_SONY_SETTINGS = KeyEvent.KEYCODE_NOTIFICATION;
 
     /**
      * A Sony app button by scan code. The BRAVIA VU31's remote (Google TV 14, #395) sends other codes for the same
@@ -66,15 +68,37 @@ final class Prefs {
             KEY_XIAOMI_RUTUBE = KeyEvent.KEYCODE_BUTTON_16, KEY_XIAOMI_KION = KeyEvent.KEYCODE_BUTTON_11,
             KEY_XIAOMI_WINK = KeyEvent.KEYCODE_BUTTON_10, KEY_XIAOMI_IVI = KeyEvent.KEYCODE_BUTTON_12;
     /**
+     * Xiaomi's MiTV-AFKR0 remote (see RemoteKeys.XIAOMI_AFKR0): the button marked "Mi TV+" is BUTTON_5, the PatchWall
+     * one; Netflix is BUTTON_6 (key 416 in its keylayout), Prime Video BUTTON_7 and YouTube BUTTON_16, the code the
+     * MiTV-M… remotes use for Rutube, which this remote doesn't have.
+     */
+    static final int KEY_XIAOMI_NETFLIX = KeyEvent.KEYCODE_BUTTON_6, KEY_XIAOMI_PRIME = KeyEvent.KEYCODE_BUTTON_7,
+            KEY_XIAOMI_YOUTUBE = KeyEvent.KEYCODE_BUTTON_16;
+    /**
      * Hisense's buttons (Q6N, MediaTek, Android TV 12 tested; read from the key filter): global keys for Google TV's
      * home app (launcherx), or Hisense's 607 for Disney+. The gear sends NOTIFICATION; ALL_APPS (284) and PROFILE_SWITCH
      * (288) are API 28/29 names, so numbers here.
      */
     static final int KEY_HISENSE_PRIME = 295, KEY_HISENSE_YOUTUBE = KeyEvent.KEYCODE_BUTTON_3, KEY_HISENSE_DISNEY = 607,
             KEY_HISENSE_APPS = 284, KEY_HISENSE_SETTINGS = KeyEvent.KEYCODE_NOTIFICATION, KEY_HISENSE_PROFILE = 288;
+    /**
+     * Philips' Google TV remote (RemoteKeys.PHILIPS_GTV), read on a 65OLED910 (#437): TP Vision's own numbers, as the
+     * TV reports them (GLOBAL_FUNCTION 811, LOCAL_OTT1 816, NETFLIX 475, YOUTUBE 781, AMAZON_PRIME_VIDEO 788).
+     */
+    static final int KEY_PHILIPS_SETTINGS = 811, KEY_PHILIPS_APPS = 816, KEY_PHILIPS_GUIDE = KeyEvent.KEYCODE_GUIDE,
+            KEY_PHILIPS_NETFLIX = 475, KEY_PHILIPS_YOUTUBE = 781, KEY_PHILIPS_PRIME = 788;
     /** Google TV Streamer's Vendor_18d1_Product_9451.kl; MACRO_1 (313) was added in API 34. */
     static final int KEY_GOOGLE_YOUTUBE = KeyEvent.KEYCODE_BUTTON_3, KEY_GOOGLE_NETFLIX = KeyEvent.KEYCODE_BUTTON_4,
             KEY_GOOGLE_CUSTOM = 313;
+    /**
+     * The onn remote (Vendor_0957_Product_0031.kl; onn 4K Pro, Google TV 14): HID usages 0x77 to 0x7A. YouTube goes to
+     * launcherx (off in our mode); Netflix, Disney+ and Paramount+ to droidlogic's and gretzky's receivers. Free TV is
+     * usage 0x187, KEYCODE_FEATURED_APP_1 (297, public since API 33: a number here, since minSdk is 26), also for
+     * launcherx: without the filter it does nothing in our mode.
+     */
+    static final int KEY_ONN_YOUTUBE = KeyEvent.KEYCODE_BUTTON_3, KEY_ONN_NETFLIX = KeyEvent.KEYCODE_BUTTON_4,
+            KEY_ONN_DISNEY = KeyEvent.KEYCODE_BUTTON_9, KEY_ONN_PARAMOUNT = KeyEvent.KEYCODE_BUTTON_10,
+            KEY_ONN_FREE_TV = 297;
     /** A button's value that opens this home screen's All Apps. */
     static final String ALL_APPS = HomeMode.PKG + "#all";
     /**
@@ -85,17 +109,24 @@ final class Prefs {
     static final int KEY_JVC_SHORTCUT = 200_383, KEY_JVC_SETTINGS = KeyEvent.KEYCODE_NOTIFICATION;
     static final String TV_SHORTCUTS = HomeMode.PKG + "#tvshortcuts";
     static final String QUICK_SETTINGS = HomeMode.PKG + "#quicksettings";
-    static final int[] KEYS = RemoteKeys.GOOGLE_STREAMER
+    static final int[] KEYS = RemoteKeys.CHROMECAST_SABRINA ? new int[] {SabrinaRemote.KEY_YOUTUBE}
+            : RemoteKeys.GOOGLE_STREAMER
             ? new int[] {KEY_GOOGLE_YOUTUBE, KEY_GOOGLE_NETFLIX, KEY_GOOGLE_CUSTOM}
+            : RemoteKeys.ONN ? new int[] {KEY_ONN_YOUTUBE, KEY_ONN_NETFLIX, KEY_ONN_DISNEY, KEY_ONN_PARAMOUNT,
+                    KEY_ONN_FREE_TV}
             : RemoteKeys.JVC_SKYWORTH ? new int[] {KEY_JVC_SHORTCUT, KEY_JVC_SETTINGS}
+            : RemoteKeys.PHILIPS_GTV ? new int[] {KEY_PHILIPS_SETTINGS, KEY_PHILIPS_APPS, KEY_PHILIPS_GUIDE, KEY_PHILIPS_NETFLIX,
+                    KEY_PHILIPS_YOUTUBE, KEY_PHILIPS_PRIME}
             : RemoteKeys.HISENSE ? new int[] {KEY_HISENSE_PRIME, KEY_HISENSE_YOUTUBE, KEY_HISENSE_DISNEY,
                     KEY_HISENSE_APPS, KEY_HISENSE_SETTINGS, KEY_HISENSE_PROFILE}
             : RemoteKeys.SONY
             ? new int[] {KEY_SONY_CORE, KEY_SONY_NETFLIX, KEY_SONY_DISNEY, KEY_SONY_PRIME, KEY_SONY_YOUTUBE, KEY_SONY_CRUNCHYROLL,
-                    KEY_SONY_PLAY, KEY_SONY_LIV}
+                    KEY_SONY_PLAY, KEY_SONY_LIV, KEY_SONY_SETTINGS}
             : RemoteKeys.STEM_NETFLIX ? new int[] {KEY_STEM_NETFLIX}
             : RemoteKeys.KTC ? new int[] {KEY_KTC_TABII}
             : RemoteKeys.XIAOMI_PATCHWALL_ONLY ? new int[] {KEY_XIAOMI_PATCHWALL}
+            : RemoteKeys.XIAOMI_AFKR0 ? new int[] {KEY_XIAOMI_PATCHWALL, KEY_XIAOMI_NETFLIX, KEY_XIAOMI_PRIME,
+                    KEY_XIAOMI_YOUTUBE}
             : RemoteKeys.XIAOMI ? new int[] {KEY_MI, KEY_YOUTUBE, KEY_XIAOMI_PATCHWALL, KEY_XIAOMI_OKKO, KEY_XIAOMI_VK,
                     KEY_XIAOMI_RUTUBE, KEY_XIAOMI_KION, KEY_XIAOMI_WINK, KEY_XIAOMI_IVI}
             : new int[] {KEY_NETFLIX, KEY_YOUTUBE, KEY_PRIME, KEY_TCL_CHANNEL, KEY_TCL_SETTINGS};
@@ -325,6 +356,11 @@ final class Prefs {
 
     static void setPowerOn(String v) { put("powerOn", v); }
 
+    /** Home Settings > Live TV button: the TV input (its id) the Live TV button opens instead, or "" for Live TV. */
+    static String liveButton() { return sp().getString("liveButton", ""); }
+
+    static void setLiveButton(String inputId) { put("liveButton", inputId); }
+
     // MARK: - Widgets and coins
 
     static boolean weather() { return sp().getBoolean("weather", true); }
@@ -411,6 +447,10 @@ final class Prefs {
         put("shelf", sb.toString());
     }
 
+    /** The shelf puts the app last opened from Free My TV first (Recent) instead of keeping the order set in Settings > Shelf. */
+    static boolean shelfRecent() { return sp().getBoolean("shelfRecent", false); }
+    static void setShelfRecent(boolean on) { put("shelfRecent", on); }
+
     // MARK: - Sleep timer
 
     /** When the sleep timer ends (System.currentTimeMillis); SleepTimer's alarm says whether it's still on. */
@@ -454,11 +494,50 @@ final class Prefs {
         put("topButtons", sb.toString());
     }
 
+    // MARK: - Drawer inputs
+
+    /** The drawer's inputs in the person's order (Settings > Inputs): the shown ones' keys ("live", "hdmi1"...),
+     *  an input the TV no longer lists keeping its place. null until the editor is used: the TV's order then. */
+    static List<String> inputsOrder() {
+        String v = sp().getString("inputsOrder", null);
+        if (v == null) return null;
+        List<String> out = new ArrayList<>();
+        for (String p : v.split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    static void setInputsOrder(List<String> keys) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : keys) sb.append(sb.length() == 0 ? "" : ",").append(p);
+        put("inputsOrder", sb.toString());
+    }
+
+    /** The inputs Settings > Inputs hides; none until it's used. */
+    static List<String> inputsHidden() {
+        String v = sp().getString("inputsHidden", "");
+        List<String> out = new ArrayList<>();
+        for (String p : v.split(",")) if (!p.isEmpty()) out.add(p);
+        return out;
+    }
+
+    static void setInputsHidden(List<String> keys) {
+        StringBuilder sb = new StringBuilder();
+        for (String p : keys) sb.append(sb.length() == 0 ? "" : ",").append(p);
+        put("inputsHidden", sb.toString());
+    }
+
     // MARK: - Remote buttons
 
     private static String defaultApp(int keyCode) {
+        if (RemoteKeys.CHROMECAST_SABRINA) {
+            return keyCode == SabrinaRemote.KEY_YOUTUBE ? "com.google.android.youtube.tv" : "";
+        }
         if (RemoteKeys.GOOGLE_STREAMER) {
             return keyCode == KEY_GOOGLE_YOUTUBE ? "com.google.android.youtube.tv" : "";
+        }
+        if (RemoteKeys.ONN) {
+            // YouTube's receiver (launcherx) is off in our mode; the others keep opening their apps until one is picked.
+            return keyCode == KEY_ONN_YOUTUBE ? "com.google.android.youtube.tv" : "";
         }
         if (RemoteKeys.JVC_SKYWORTH) {
             if (keyCode == KEY_JVC_SHORTCUT) return TV_SHORTCUTS;
@@ -473,7 +552,23 @@ final class Prefs {
                 case KEY_SONY_YOUTUBE: return "com.google.android.youtube.tv";
                 case KEY_SONY_CRUNCHYROLL: return "com.crunchyroll.crunchyroid";
                 case KEY_SONY_LIV: return "com.sonyliv";
+                case KEY_SONY_SETTINGS: return "com.android.tv.settings";
                 default: return "";
+            }
+        }
+        if (RemoteKeys.XIAOMI_AFKR0) {
+            switch (keyCode) {
+                case KEY_XIAOMI_NETFLIX: return "com.netflix.ninja";
+                case KEY_XIAOMI_PRIME: return "com.amazon.amazonvideo.livingroom";
+                case KEY_XIAOMI_YOUTUBE: return "com.google.android.youtube.tv";
+                default: return "";   // the Mi TV+ button keeps PatchWall, which also holds the TV's input picker
+            }
+        }
+        if (RemoteKeys.PHILIPS_GTV) {
+            switch (keyCode) {
+                case KEY_PHILIPS_APPS: return ALL_APPS;
+                case KEY_PHILIPS_SETTINGS: return "com.android.tv.settings";
+                default: return "";   // the app buttons go on working through Philips' receiver
             }
         }
         if (RemoteKeys.HISENSE) {

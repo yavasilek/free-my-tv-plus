@@ -51,10 +51,10 @@ def apply(files):
     home = replace_once(home, 'st.tab = i;',
         'st.tab = i;\n    VoKinoBridge.resetPage(TAB_KIND[i]);', 'reset personal page on tab selection')
     home = replace_once(home,
-        "var defs = [['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];",
-        "var defs = [['live_tv', tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')], ['search', 'Поиск VoKino']];", 'search button')
+        "var defs = [[own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')]];",
+        "var defs = [[own ? 'tv' : 'live_tv', own ? boxLabel() : tr('light|Live TV')], ['hdmi', tr('HDMI Inputs')], ['settings', tr('light|Settings')], ['search', 'Поиск VoKino']];", 'search button')
     home = replace_once(home, 'for (var b = 0; b < 3; b++) {', 'for (var b = 0; b < 4; b++) {', 'four home buttons')
-    home = replace_once(home, '(1596 + 88 * b)', '(1508 + 88 * b)', 'home button spacing')
+    home = replace_once(home, 'startAt(r, 1596 + 88 * b)', 'startAt(r, 1508 + 88 * b)', 'home button spacing')
     home = replace_once(home, 'sym(defs[b][0], r);', "if (defs[b][0] === 'search') el('span', 'search-icon', r); else sym(defs[b][0], r);", 'search symbol')
     home = replace_once(home, 'Math.min(5, st.top + dx)', 'Math.min(6, st.top + dx)', 'search button remote focus')
     home = replace_once(home, 'else openSettings();\n        return;\n      case Z.CARDS:',
@@ -66,17 +66,17 @@ def apply(files):
     home = replace_once(home, "label: tr('Shelf'), value:", "label: 'Избранные приложения', value:", 'favorites setting name')
     home = replace_once(home, "      {label: tr('Dim'), value: dimName(),",
         "      {label: 'Оформление дока', value: '›', dockStyle: true, step: function (d) { if (d >= 0) DockStyle.open(); }},\n      {label: tr('Dim'), value: dimName(),", 'dock appearance next to theme setting')
-    home = replace_once(home, "title.appendChild(document.createTextNode(tr('Shelf')));",
-        "title.appendChild(document.createTextNode('Избранные приложения'));", 'favorites editor title')
-    home = replace_once(home, "var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder, a.title);",
-        "var a = e.rows[i], at = e.ids.indexOf(a.id), row = el('div', 'row', holder);\n      el('span', 'favorite-name', row, a.title);", 'bounded favorite names')
+    home = replace_once(home, "title.appendChild(document.createTextNode(forInputs ? tr('Inputs') : tr('Shelf')));",
+        "title.appendChild(document.createTextNode(forInputs ? tr('Inputs') : 'Избранные приложения'));", 'favorites editor title')
+    home = replace_once(home, "var row = el('div', 'row', holder, I18N.name(forInputs ? item.label || tr('Live TV') : item.title));",
+        "var row = el('div', 'row', holder);\n      el('span', 'favorite-name', row, I18N.name(forInputs ? item.label || tr('Live TV') : item.title));", 'bounded favorite names')
     home = replace_once(home, "at >= 0 ? '#' + (at + 1) : tr('shelf|Off')",
         "at >= 0 ? '← ' + (at + 1) + ' →' : 'Не добавлено'", 'visible reorder controls')
     home = replace_once(home, "tr('OK adds or removes an app. ← → change the order.')",
         "'OK - добавить/убрать · ← → - порядок · Back - готово'", 'favorites editor hint')
     home = replace_once(home, 'function openShelfEdit() {', 'function openShelfEdit(selectedId) {', 'open favorites at selected app')
-    home = replace_once(home, '    st.edit = 0;\n    renderShelfEdit();',
-        '    st.edit = 0;\n    editList().rows.forEach(function (a, i) { if (a.id === selectedId) st.edit = i; });\n    renderShelfEdit();', 'focus selected favorite')
+    home = replace_once(home, "    openEdit('shelf');",
+        "    openEdit('shelf');\n    editList().rows.forEach(function (a, i) { if (a.id === selectedId) st.edit = i; });\n    renderEdit();", 'focus selected favorite')
     home = replace_once(home, '    revealShelf();', '    revealShelf();\n    if (window.FavoriteControls) FavoriteControls.update();', 'favorites help follows focus')
     home = replace_once(home, 'state: st, move: move, activate: activate,',
         'state: st, move: move, activate: activate, showDockSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].dockStyle) st.row = i; updateFocus(); }, editFavorites: function () { openShelfEdit(shelf[st.shelf] && shelf[st.shelf].id); },', 'custom settings and favorites editor access')
@@ -169,7 +169,7 @@ def configure_sections(home):
         ('st.top >= 3', 'st.top >= TAB_KIND.length'),
         ('st.top < 3) st.top = 3;', 'st.top < TAB_KIND.length) st.top = TAB_KIND.length;'),
         ('if (st.top < 3) return;', 'if (st.top < TAB_KIND.length) return;'),
-        ('if (st.top === 3) { var live', 'if (st.top === TAB_KIND.length) { var live'),
+        ('if (st.top === 3) { var box2', 'if (st.top === TAB_KIND.length) { var box2'),
         ('else if (st.top === 4) {', 'else if (st.top === TAB_KIND.length + 1) {'),
         ('else if (st.top === 6) VoKinoSearch.open();', 'else if (st.top === TAB_KIND.length + 3) VoKinoSearch.open();'),
         ('st.top = Data.hasKey() ? st.tab : 3;', 'st.top = Data.hasKey() ? st.tab : TAB_KIND.length;'),
@@ -211,10 +211,10 @@ def configure_top_controls(home):
     Array.prototype.splice.apply(rows, [6, 0].concat(CombinedSearch.settings(), searchRows));
     var names = ['Bitcoin',""", 'adjacent catalogue search settings')
     home = replace_once(home, 'var TAB_KIND = VoKinoSections.tabs()', 'var lastUtility = 2;\n  var TAB_KIND = VoKinoSections.tabs()', 'remember the upper utility row')
-    home = replace_once(home, 'r.style.left = (1508 + 88 * b)', '''var visible = TopControls.slots(), position = visible.indexOf(b);
+    home = replace_once(home, 'startAt(r, 1508 + 88 * b)', '''var visible = TopControls.slots(), position = visible.indexOf(b);
       r.style.display = position < 0 ? 'none' : '';
       r.setAttribute('data-top-action', ['liveTV', 'inputs', 'settings', 'search', 'kinopoisk', 'ivi', 'combined'][b]);
-      r.style.left = (1772 - 88 * (visible.length - 1 - position))''', 'pack visible upper icons at the right edge')
+      startAt(r, 1772 - 88 * (visible.length - 1 - position))''', 'pack visible upper icons at the right edge')
     home = replace_once(home, '    revealShelf();', '''    revealShelf();
     if (st.zone === Z.TOP && st.top >= TAB_KIND.length && TopControls.slots().indexOf(st.top - TAB_KIND.length) >= 0) lastUtility = st.top - TAB_KIND.length;''', 'remember focused upper action')
     home = replace_once(home, 'Math.max(Data.hasKey() ? 0 : TAB_KIND.length, Math.min(TAB_KIND.length + 3, st.top + dx))',

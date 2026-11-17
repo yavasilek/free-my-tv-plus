@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import {EventEmitter} from 'node:events';
 import assert from 'node:assert/strict';
+import './test_tizentube_starter.mjs';
 const code=fs.readFileSync(new URL('./autostart.js',import.meta.url),'utf8');
 function boot(failures=0,skipCallbacks=false){
   let now=1000000,interval,server,requests=[],launches=0,apps=[],listener;

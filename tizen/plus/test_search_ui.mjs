@@ -614,6 +614,38 @@ try{
   await full.waitForFunction(()=>MyShowsCatalog.profile()===''&&FreeMyTV.state.zone==='settings');
   assert.equal(await full.eval(()=>MyShowsCatalog.items('watching').length),0);
   assert.equal(await full.eval(()=>MyShowsCatalog.items('episodes').length),0);
+  // The upstream 1.5 inputs editor must coexist with our favorite-app editor.
+  await openSettings();
+  await full.eval(()=>{
+    FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>/^(Inputs|Входы)$/.test(r.firstChild.textContent));
+    if(FreeMyTV.state.row<0)throw new Error('Inputs editor setting missing');
+    FreeMyTV.activate();
+  });
+  assert.equal(await full.eval(()=>FreeMyTV.state.zone),'edit');
+  const inputLabels=await full.locator('#shelfedit .favorite-name').allTextContents();
+  assert.ok(inputLabels.length>=4,'The inputs editor lists HDMI ports');
+  await full.keyboard.press('ArrowRight');
+  const reorderedInputs=await full.locator('#shelfedit .favorite-name').allTextContents();
+  assert.equal(reorderedInputs[0],inputLabels[1]);
+  await full.keyboard.press('Enter');
+  const inputOrder=await full.eval(()=>Prefs.inputsOrder());
+  const hiddenInputs=await full.eval(()=>Prefs.inputsHidden());
+  assert.equal(hiddenInputs.length,1,'OK hides the selected input');
+  await full.keyboard.press('Escape');
+  const climateUrl='http://homeassistant.local:8123/api/webhook/'+'test_climate_'.repeat(4);
+  await full.route(climateUrl,route=>route.fulfill({json:{version:1,weather:{temperature:7,condition:'cloudy'},rooms:[{name:'Кабинет',temperature:22.5,humidity:45}]}}));
+  await full.eval(url=>localStorage.setItem('fmtv.home.climate.v1',url),climateUrl);
+  await full.reload();
+  await full.waitForFunction(()=>window.FreeMyTV&&document.getElementById('ha-climate')?.textContent.includes('Кабинет'));
+  assert.deepEqual(await full.eval(()=>Prefs.inputsOrder()),inputOrder,'Input order survives reload');
+  assert.deepEqual(await full.eval(()=>Prefs.inputsHidden()),hiddenInputs,'Hidden inputs survive reload');
+  await full.eval(()=>FreeMyTV.showAmbient());
+  assert.match(await full.locator('#ambient .ha-ambient-rooms').textContent(),/Кабинет/);
+  await full.eval(()=>{FreeMyTV.hideAmbient();FreeMyTV.showSaver();});
+  assert.match(await full.locator('#saver .ha-ambient-rooms').textContent(),/Кабинет/);
+  assert.equal(await full.eval(()=>getComputedStyle(document.querySelector('#saver .side')).backgroundColor),'rgba(15, 15, 17, 0.4)','Photo-saver readings retain 60% background transparency');
+  await full.screenshot({path:path.join(root,'out/plus-tests/climate-saver-1.5.png')});
+  await full.eval(()=>FreeMyTV.hideSaver());
   assert.deepEqual(full.consoleErrors,[]);
   await full.close();
   console.log(JSON.stringify({passed:true,initial:first,live,restored,checks:['first IME composition','missing input events','no duplicate commit request','live typing','keyboard viewport','empty','error','paging','five visible rows','open VoKino','restore selection','Back','key isolation','observer stops on close','hold OK without launch','reorder favorites','membership changes','persisted order','short OK','cancel held OK on navigation','dock palette','dock alpha 0-100','icons keep opacity','dock settings persist','dock reset','section visibility','section order','automatic Overview from enabled tabs','long tab strip','dynamic search/settings indices','vertical utility navigation','hidden utility buttons skipped','utility visibility persists','Kinopoisk favorite visibility','private key setup','Kinopoisk live IME search','Kinopoisk pages','OTT film launch','restore Kinopoisk search','VoKino search toggle','Ivi search and pages','Ivi favorite visibility','Ivi return selection','visible-only availability badges','service rows','service and tab order','lazy row posters','catalog card return','combined search concurrency, failures, preferences, launch and return','MyShows ranking, profile, progress and playback search','VoKino photo saver, OK opens, arrows dismiss','MyShows poster timeouts and exact-ID fallback','MyShows recent episodes, ordering, lazy batching and profile isolation']}));

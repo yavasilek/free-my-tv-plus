@@ -24,6 +24,7 @@ class BuildTests(unittest.TestCase):
         self.assertEqual(original, before, 'Default builds must remain untouched')
         ns = {'t': 'http://tizen.org/ns/widgets', 'w': 'http://www.w3.org/ns/widgets'}
         manifest = ET.fromstring(app['config.xml'])
+        self.assertEqual(manifest.get('version'), '1.5.0')
         self.assertEqual(manifest.find('w:name', ns).text, 'Free My TV Plus')
         self.assertEqual(manifest.find('t:application', ns).get('required_version'), '6.0')
         self.assertEqual(manifest.find('t:setting', ns).get('background-support'), 'disable')
@@ -35,6 +36,11 @@ class BuildTests(unittest.TestCase):
         self.assertLess(app['index.html'].index(b'vokino-adapter.js'), app['index.html'].index(b'home.js'))
         self.assertIn(b'VoKinoBridge.turnPage', app['home.js'])
         self.assertIn(b'class="lite"', app['index.html'])
+        for name in ('vokino-progress.js', 'home-climate.js', 'home-climate.css'):
+            self.assertIn(name, app)
+        self.assertIn(b'HomeClimate.saver(clock.parentNode, Data.weather)', app['home.js'])
+        self.assertIn(b'openInputsEdit()', app['home.js'])
+        self.assertIn('fonts/Inter-Regular.woff2', app)
         self.assertIn(b'favorites.js', app['index.html'])
         self.assertIn(b'dock-style.js', app['index.html'])
         self.assertIn(b'top-controls.js', app['index.html'])
