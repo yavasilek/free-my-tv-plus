@@ -1,0 +1,45 @@
+#ha-climate {
+  position: absolute;
+  top: 140px;
+  left: 76px;
+  right: 76px;
+  display: flex;
+  align-items: baseline;
+  font-size: 30px;
+  line-height: 36px;
+  color: #505055;
+}
+#ha-climate[hidden] { display: none; }
+.ha-climate-visible #catalog-home { top: 248px; }
+#ha-climate > span { flex: 1; min-width: 0; white-space: nowrap; }
+#ha-climate > .ha-outdoor { flex: 1.65; }
+#ha-climate .ha-label { display: block; overflow: hidden; text-overflow: ellipsis; }
+#ha-climate strong { color: #1d1d1f; font-size: 42px; font-weight: 600; line-height: 50px; }
+#ha-climate .ha-condition { margin-left: 12px; font-size: 28px; }
+.night #ha-climate { color: #c7c7cc; }
+.night #ha-climate strong { color: #f5f5f7; }
+#ambient .ha-ambient-rooms {
+  margin-top: 28px;
+  color: #c7c7cc;
+}
+#ambient .side { width: 760px; }
+#ambient .cond { font-size: 40px; }
+#ambient .ha-ambient-rooms:empty { display: none; }
+#saver .side {
+  position: absolute;
+  top: 76px;
+  right: 80px;
+  width: 740px;
+  padding: 26px 34px;
+  background: rgba(15, 15, 17, 0.40);
+  color: #f5f5f7;
+  text-align: right;
+}
+#saver .side[hidden],
+#saver .side > :empty { display: none; }
+#saver .temp { font-size: 112px; font-weight: 300; line-height: 1; }
+#saver .cond { margin-top: 8px; font-size: 40px; }
+#saver .ha-ambient-rooms { margin-top: 18px; color: #dddde0; }
+.ha-ambient-rooms { font-size: 38px; line-height: 52px; }
+.ha-ambient-rooms > span { display: inline-block; width: 50%; overflow-wrap: break-word; vertical-align: top; }
+.ha-ambient-rooms strong { color: #f5f5f7; font-weight: 600; white-space: nowrap; }

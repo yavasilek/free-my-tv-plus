@@ -71,7 +71,7 @@
         view.tabStamp = tabStamp; view.tabs.textContent = '';
         tabs.forEach(function (tab) { var button = node('button', 'catalog-tab', view.tabs, tab.name); button.type = 'button'; button.setAttribute('data-tab', tab.id); button.onclick = function () { selectTab(id, tab.id); focusRow(id, 'tabs'); }; });
       }
-      var items = selected.tab ? CatalogFeeds.picks(id, selected.tab, selected.page) : [], stamp = selected.tab + ':' + selected.page + ':' + items.map(function (p) { return p.id + ':' + (p.type || '') + ':' + p.title; }).join('|');
+      var items = selected.tab ? CatalogFeeds.picks(id, selected.tab, selected.page) : [], stamp = selected.tab + ':' + selected.page + ':' + items.map(function (p) { return p.id + ':' + (p.type || '') + ':' + p.title + ':' + (p.meta || ''); }).join('|');
       if (stamp !== view.stamp) {
         view.stamp = stamp; view.items = items; view.cards.textContent = ''; if (items.length) selected.card = Math.max(0, Math.min(selected.card, items.length - 1));
         items.forEach(function (item, index) {
@@ -99,7 +99,11 @@
   }
   function launch() {
     var view = elements[activeService], selected = state(activeService), item = view && view.items && view.items[selected.card]; if (!item || view.opening) return;
-    if (activeService === 'myshows') { CombinedSearch.openForTitle(item.title, CatalogHome.selection()); return; }
+    if (activeService === 'myshows') {
+      if (item.type === 'movie' && !item.watched) MyShowsCatalog.openMovie(item, CatalogHome.selection());
+      else CombinedSearch.openForTitle(item.title, CatalogHome.selection());
+      return;
+    }
     view.opening = true; FreeMyTV.poke();
     function done(ok, error) { view.opening = false; if (!ok) FreeMyTV.toast(error || 'Не удалось открыть карточку'); }
     if (activeService === 'vokino') TV.launch(item.app, null, done);
@@ -135,4 +139,11 @@
   window.CatalogHome = {resetPages: resetPages, refresh: render, paint: focus, focus: focusRow, selection: function () { return {service: activeService, part: part, choices: JSON.parse(JSON.stringify(choices))}; }, restore: function (saved) { if (!saved) return; services().forEach(function (s) { var row = saved.choices && saved.choices[s.id]; if (row && typeof row.tab === 'string') choices[s.id] = {tab: row.tab, card: Math.max(0, Math.min(15, Number(row.card) || 0)), page: Math.max(1, Math.min(1000, Number(row.page) || 1))}; }); focusRow(saved.service, saved.part === 'tabs' ? 'tabs' : 'cards'); }};
   CatalogConfig.onChange(resetPages);
   CatalogFeeds.onChange(render); MyShowsCatalog.onChange(render); Data.onChange(render); render();
+  function refreshMyShows() {
+    if (document.hidden || !elements.myshows) return;
+    var selected = state('myshows');
+    if (selected.tab === 'episodes' || selected.tab === 'movies') render();
+  }
+  setInterval(refreshMyShows, 15000);
+  document.addEventListener('visibilitychange', refreshMyShows);
 })();

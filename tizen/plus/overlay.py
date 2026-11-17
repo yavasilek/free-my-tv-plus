@@ -21,18 +21,26 @@ def apply(files):
                          '<script src="vokino-adapter.js"></script>\n<script src="vokino-search.js"></script>\n<script src="home.js"></script>\n<script src="favorites.js"></script>', 'home entry point')
     index = replace_once(index, '<html lang="en">', '<html lang="en" class="lite">', 'lightweight TV rendering')
     index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-sections.js"></script>\n<script src="vokino-adapter.js"></script>', 'section preferences before data adapter')
+    index = replace_once(index, '<script src="vokino-adapter.js"></script>', '<script src="vokino-progress.js"></script>\n<script src="vokino-adapter.js"></script>', 'optional episode progress receiver')
     index = replace_once(index, '<script src="home.js"></script>', '<script src="dock-style.js"></script>\n<script src="top-controls.js"></script>\n<script src="kinopoisk-availability.js"></script>\n<script src="kinopoisk-search.js"></script>\n<script src="ivi-search.js"></script>\n<script src="combined-search.js"></script>\n<script src="home.js"></script>', 'appearance and utility controls entry point')
     index = replace_once(index, '<script src="home.js"></script>', '<script src="catalog-config.js"></script>\n<script src="myshows.js"></script>\n<script src="catalog-feeds.js"></script>\n<script src="home.js"></script>', 'catalogue models before home')
     index = replace_once(index, '<script src="favorites.js"></script>', '<script src="favorites.js"></script>\n<script src="catalog-home.js"></script>', 'service rows after launcher initialization')
+    index = replace_once(index, '<script src="catalog-home.js"></script>', '<script src="catalog-home.js"></script>\n<script src="home-climate.js"></script>', 'home climate after launcher initialization')
     index = replace_once(index, '<link rel="stylesheet" href="home.css">',
                          '<link rel="stylesheet" href="home.css">\n<link rel="stylesheet" href="performance.css">\n<link rel="stylesheet" href="vokino-search.css">\n<link rel="stylesheet" href="dock-style.css">\n<link rel="stylesheet" href="vokino-sections.css">', 'performance stylesheet')
     index = replace_once(index, '<link rel="stylesheet" href="vokino-sections.css">', '<link rel="stylesheet" href="vokino-sections.css">\n<link rel="stylesheet" href="catalog-home.css">', 'service-row stylesheet')
+    index = replace_once(index, '<link rel="stylesheet" href="catalog-home.css">', '<link rel="stylesheet" href="catalog-home.css">\n<link rel="stylesheet" href="home-climate.css">', 'home climate stylesheet')
     data = replace_once(files['data.js'].decode('utf-8'),
         "cards: function () { var n = pick('cards', 3); return n < 3 ? 3 : n > 6 ? 6 : n; }",
         "cards: function () { var n = pick('cards', 16); return n < 1 ? 1 : n > 16 ? 16 : n; }", 'card count')
     home = replace_once(files['home.js'].decode('utf-8'),
         '3 + (Prefs.cards() - 3 + (d || 1) + 4) % 4',
         '1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16', 'card count setting')
+    home = replace_once(home, "a.querySelector('.cond').textContent = w ? Data.condition(w.code, w.isDay) : '';",
+        "a.querySelector('.cond').textContent = w ? Data.condition(w.code, w.isDay) : '';\n    if (window.HomeClimate) HomeClimate.saver(a, Data.weather);", 'clock weather and home readings')
+    home = replace_once(home,
+        "clock.children[1].textContent = formatDate('format|EEEE, MMMM d', d.getTime());",
+        "clock.children[1].textContent = formatDate('format|EEEE, MMMM d', d.getTime());\n    if (window.HomeClimate) HomeClimate.saver(clock.parentNode, Data.weather);", 'photo screensaver weather and home readings')
     home = replace_once(home,
         "Prefs.set('cards', 1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16); renderCards();",
         "Prefs.set('cards', 1 + (Prefs.cards() - 1 + (d || 1) + 16) % 16); VoKinoBridge.offsets = {}; renderCards(); if (window.CatalogHome) CatalogHome.resetPages();", 'reset pages after count change')
@@ -108,7 +116,7 @@ def apply(files):
     home = configure_top_controls(home)
     home = replace_once(home, '    followSoon();', '    followSoon();\n    if (window.CatalogHome) CatalogHome.paint();', 'catalogue focus follows launcher focus')
     home = replace_once(home, "      {label: 'Разделы VoKino',", "      {label: 'Каталоги и вкладки', value: '›', catalogs: true, step: function (d) { if (d >= 0) CatalogConfig.open(); }},\n      {label: 'Профиль MyShows', value: MyShowsCatalog.profile() || 'Не подключен', opens: true, myshows: true, step: function (d) { if (d >= 0) MyShowsCatalog.open(); }},\n      {label: 'Разделы VoKino',", 'catalogue configuration setting')
-    home = replace_once(home, "function sheetOpen() { return ", "function sheetOpen() { return st.zone === 'catalog-config' || ", 'catalogue configuration blocks screensaver')
+    home = replace_once(home, "function sheetOpen() { return ", "function sheetOpen() { return st.zone === 'catalog-config' || st.zone === 'myshows-movie' || ", 'catalogue configuration blocks screensaver')
     home = replace_once(home, 'function closeSheets() {', 'function closeSheets() {\n    if (window.CatalogConfig) CatalogConfig.close(false);', 'close catalogue configuration with sheets')
     home = replace_once(home, 'state: st, move: move, activate: activate,', 'state: st, move: move, activate: activate, showMyShowsSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].myshows) st.row = i; updateFocus(); }, showCatalogSettings: function () { openSettings(); for (var i = 0; i < rowsNow.length; i++) if (rowsNow[i].catalogs) st.row = i; updateFocus(); },', 'return to catalogue configuration setting')
     if '<tizen:service ' in manifest:
@@ -139,9 +147,12 @@ def apply(files):
                   'ivi-search.js': (ROOT / 'ivi-search.js').read_bytes(),
                   'catalog-config.js': (ROOT / 'catalog-config.js').read_bytes(),
                   'myshows.js': (ROOT / 'myshows.js').read_bytes(),
+                  'vokino-progress.js': (ROOT / 'vokino-progress.js').read_bytes(),
                   'catalog-feeds.js': (ROOT / 'catalog-feeds.js').read_bytes(),
                   'catalog-home.js': (ROOT / 'catalog-home.js').read_bytes(),
                   'catalog-home.css': (ROOT / 'catalog-home.css').read_bytes(),
+                  'home-climate.js': (ROOT / 'home-climate.js').read_bytes(),
+                  'home-climate.css': (ROOT / 'home-climate.css').read_bytes(),
                   'performance.css': (ROOT / 'performance.css').read_bytes(),
                   'autostart.js': (ROOT / 'autostart.js').read_bytes()})
     return files

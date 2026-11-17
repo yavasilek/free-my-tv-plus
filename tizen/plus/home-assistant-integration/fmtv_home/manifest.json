@@ -1,0 +1,9 @@
+{
+  "domain": "fmtv_home",
+  "name": "Free My TV Home",
+  "version": "1.0.0",
+  "documentation": "https://github.com/yavasilek/free-my-tv-plus/blob/main/tizen/plus/README.md",
+  "dependencies": ["webhook"],
+  "codeowners": [],
+  "iot_class": "local_polling"
+}

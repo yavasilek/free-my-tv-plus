@@ -3,11 +3,43 @@
   'use strict';
   var KEY = 'fmtv.myshows.profile.v1', RPC = 'https://api.myshows.ru/v2/rpc/';
   var login = '', listeners = [], ttl = 15 * 60000;
-  var tabs = {watching: true, later: true, finished: true};
+  var tabs = {watching: true, later: true};
   try { login = localStorage.getItem(KEY) || ''; } catch (e) {}
   function feed() { return {items: {}, loading: false, error: '', at: 0}; }
   var top = feed(), profile = feed();
   function emit() { listeners.forEach(function (fn) { fn(); }); }
+  function bridge() {
+    try {
+      var value = JSON.parse(localStorage.getItem('fmtv.myshows.catalog.v1'));
+      if (!value || !/^[a-zA-Z0-9_-]{32,128}$/.test(value.key)) return null;
+      var url = new URL(value.url);
+      var local = /^(?:10\.\d{1,3}|192\.168|172\.(?:1[6-9]|2[0-9]|3[01]))(?:\.\d{1,3}){2}$|^[a-z0-9-]+\.local$/i;
+      if (/^https?:$/.test(url.protocol) && local.test(url.hostname) && url.pathname === '/' &&
+          !url.username && !url.password && !url.search && !url.hash) return {url: url.origin, key: value.key};
+    } catch (e) {}
+    return null;
+  }
+  function accountRequest(task, params, method, payload) {
+    var connection = bridge();
+    if (!connection) return Promise.reject(new Error('Подключите помощник MyShows в Home Assistant'));
+    var url = new URL('/myshows/' + task, connection.url);
+    url.searchParams.set('login', login);
+    Object.keys(params).forEach(function (key) { url.searchParams.set(key, params[key]); });
+    var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 25000);
+    var options = {method: method || 'GET', credentials: 'omit', redirect: 'error',
+      headers: {Authorization: 'Bearer ' + connection.key}, signal: controller.signal};
+    if (payload) {
+      options.headers['Content-Type'] = 'application/json';
+      options.body = JSON.stringify(payload);
+    }
+    return fetch(url.href, options)
+      .then(function (response) {
+        if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) {
+          throw new Error(body.error === 'login-required' ? 'Войдите в MyShows в помощнике Home Assistant' : 'Помощник MyShows не смог обновить список');
+        });
+        return task === 'poster' ? response.blob() : response.json();
+      }).then(function (body) { clearTimeout(timer); return task === 'poster' ? body : body.result; }, function (error) { clearTimeout(timer); throw error; });
+  }
   function requestRpc(body) {
     var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 12000);
     return fetch(RPC, {method: 'POST', credentials: 'omit', redirect: 'error', signal: controller.signal,
@@ -59,8 +91,36 @@
     pendingPosters[id] = promise; pumpPosters(); return promise;
   }
 
+  var moviePosterQueue = [], activeMoviePosters = 0;
+  function pumpMoviePosters() {
+    while (activeMoviePosters < 3 && moviePosterQueue.length) (function (job) {
+      if (!document.documentElement.contains(job.img)) return;
+      activeMoviePosters++;
+      accountRequest('poster', {path: new URL(job.url).pathname}).then(function (blob) {
+        if (!document.documentElement.contains(job.img)) return;
+        var objectUrl = URL.createObjectURL(blob);
+        job.img.onload = job.img.onerror = function (event) {
+          URL.revokeObjectURL(objectUrl);
+          if (event.type === 'error') job.img.style.opacity = '0';
+        };
+        job.img.src = objectUrl;
+      }).catch(function () { job.img.style.opacity = '0'; }).then(function () {
+        activeMoviePosters--;
+        pumpMoviePosters();
+      });
+    })(moviePosterQueue.shift());
+  }
+
   function loadPoster(img, item) {
     function hide() { img.style.opacity = '0'; }
+    if (item.type === 'movie') {
+      if (item.poster && /^https:\/\/media\.myshows\.me\/movies\//.test(item.poster)) {
+        moviePosterQueue.push({img: img, url: item.poster});
+        pumpMoviePosters();
+      } else if (item.poster) { img.onerror = hide; img.src = item.poster; }
+      else hide();
+      return;
+    }
     function fallback() {
       img.onload = null; img.onerror = null; img.removeAttribute('src');
       fallbackPoster(item.showId || item.id).then(function (url) {
@@ -91,14 +151,28 @@
         year >= 1900 && year <= 2200 ? year : ''].filter(Boolean).join(' · ')};
   }
   function classify(rows, personal) {
-    var groups = {popular: [], watching: [], later: [], finished: []}, seen = {};
+    var groups = {popular: [], watching: [], later: [], completed: new Set()}, seen = {};
     rows.forEach(function (entry) {
       var tab = personal ? entry && entry.watchStatus : 'popular';
+      var card = item(entry, personal);
+      if (!card) return;
+      if (personal) {
+        var watched = Number(entry.watchedEpisodes), total = Number(entry.totalEpisodes);
+        if (Number.isInteger(watched) && Number.isInteger(total) && total > 0 && watched >= total) {
+          groups.completed.add(card.id);
+          return;
+        }
+      }
       if (personal && !Object.prototype.hasOwnProperty.call(tabs, tab)) return;
-      var card = item(entry, personal), key = card && tab + ':' + card.id;
-      if (card && !seen[key]) { groups[tab].push(card); seen[key] = true; }
+      var key = tab + ':' + card.id;
+      if (!seen[key]) { groups[tab].push(card); seen[key] = true; }
     });
     return groups;
+  }
+
+  function visibleItems(items) {
+    var completed = profile.items.completed;
+    return completed ? items.filter(function (card) { return !completed.has(card.showId || card.id); }) : items;
   }
   function load(tab) {
     var publicTab = tab === 'popular', current = publicTab ? top : profile;
@@ -110,7 +184,61 @@
       .then(function () { current.at = Date.now(); current.loading = false; emit(); });
     return current;
   }
-  var recent = {items: [], at: 0, loading: false, failed: 0, ids: ''};
+  var recent = {items: [], candidates: [], candidatesAt: 0, at: 0, loading: false, failed: 0, ids: ''};
+  var movies = {pages: {}, pending: {}, errors: {}};
+  var refreshInterval = 60000;
+
+  function movieItems(page) {
+    if (!login || !bridge()) return {items: [], more: false};
+    var state = movies, saved = state.pages[page], error = state.errors[page];
+    if (!state.pending[page] && (!saved || Date.now() - saved.at >= refreshInterval) && (!error || Date.now() - error.at >= refreshInterval)) {
+      state.pending[page] = true;
+      accountRequest('movies', {page: page}).then(function (result) {
+        if (!result || !Array.isArray(result.items)) throw new Error('Не удалось загрузить фильмы');
+        var items = result.items.filter(function (m) {
+          return m && /^[1-9][0-9]{0,9}$/.test(String(m.id)) && typeof m.title === 'string' && m.title.trim() &&
+            typeof m.watched === 'boolean';
+        }).map(function (m) {
+          return {id: String(m.id), type: 'movie', title: m.title.slice(0, 180), watched: m.watched,
+            poster: /^https:\/\/(?:media\.myshows\.me|cdn\.myshows\.me)\//.test(m.poster) ? m.poster : '',
+            meta: [m.watched ? 'Посмотрел' : 'Буду смотреть', Number(m.year) || ''].filter(Boolean).join(' · ')};
+        });
+        state.pages[page] = {items: items, more: result.more === true, at: Date.now()};
+        delete state.errors[page];
+      }).catch(function (error) { state.errors[page] = {message: error.message, at: Date.now()}; })
+        .then(function () { delete state.pending[page]; if (movies === state) emit(); });
+    }
+    return saved || {items: [], more: false};
+  }
+
+  function markMovie(id) {
+    var state = movies;
+    return accountRequest('mark', {id: id}, 'POST').then(function (result) {
+      if (result !== true) throw new Error('MyShows не подтвердил отметку');
+      if (movies !== state) return;
+      Object.keys(state.pages).forEach(function (page) {
+        state.pages[page].items.forEach(function (item) {
+          if (item.id !== id) return;
+          item.watched = true;
+          item.meta = item.meta.replace(/^Буду смотреть/, 'Посмотрел');
+        });
+        state.pages[page].at = 0;
+      });
+      emit();
+    });
+  }
+
+  function markMovieProgress(movie, progress) {
+    var state = movies;
+    return accountRequest('movie-progress', {}, 'POST', {
+      title: movie.title, original: movie.original, year: movie.year, progress: progress
+    }).then(function (result) {
+      if (movies !== state || !result || result.status !== 'marked') return;
+      Object.keys(state.pages).forEach(function (page) { state.pages[page].at = 0; });
+      emit();
+      FreeMyTV.toast('Фильм отмечен в MyShows');
+    });
+  }
 
   function episodeCard(episode, show, now) {
     var id = String(episode && episode.id), season = Number(episode && episode.seasonNumber), number = Number(episode && episode.episodeNumber);
@@ -124,12 +252,41 @@
   }
 
   function recentEpisodes() {
-    var source = load('watching'), shows = source.items.watching || [], now = Date.now();
-    if (!login || !shows.length) return [];
+    var source = load('watching'), shows = visibleItems(source.items.watching || []), now = Date.now();
+    if (!login || !bridge() || !shows.length) return [];
     var ids = shows.map(function (show) { return show.id; }).sort().join(',');
-    if (recent.loading || (recent.ids === ids && now - recent.at < (recent.failed ? 120000 : ttl))) return recent.items;
-    var state = recent = {items: recent.items, at: 0, loading: true, failed: 0, ids: ids};
+    if (recent.loading || (recent.ids === ids && now - recent.at < refreshInterval)) return visibleItems(recent.items);
+    var previous = recent;
+    var state = recent = {items: recent.ids === ids ? recent.items : [], candidates: [], candidatesAt: 0,
+      at: 0, loading: true, failed: 0, ids: ids};
     var cursor = 0, active = 0, found = new Map();
+
+    function applyWatchStatus() {
+      var showIds = Array.from(new Set(state.candidates.map(function (card) { return card.showId; })));
+      var watched = new Map(), pending = Promise.resolve();
+      for (var i = 0; i < showIds.length; i += 18) (function (ids) {
+        pending = pending.then(function () {
+          if (state !== recent) return;
+          return accountRequest('episodes', {ids: ids.join(',')}).then(function (rows) {
+            if (!Array.isArray(rows)) throw new Error('Не удалось проверить отметки');
+            rows.forEach(function (row) {
+              if (row && Array.isArray(row.watched) && ids.indexOf(String(row.showId)) >= 0) {
+                watched.set(String(row.showId), new Set(row.watched.map(String)));
+              }
+            });
+            if (ids.some(function (id) { return !watched.has(id); })) state.failed++;
+          }).catch(function (error) { state.failed++; state.error = error.message; });
+        });
+      })(showIds.slice(i, i + 18));
+      pending.then(function () {
+        if (state !== recent) return;
+        state.items = state.candidates.filter(function (card) {
+          var marks = watched.get(card.showId);
+          return marks && !marks.has(card.id.slice('episode:'.length));
+        });
+        state.loading = false; state.at = Date.now(); emit();
+      });
+    }
 
     function collect(batch, response) {
       var byId = new Map((Array.isArray(response) ? response : []).filter(Boolean).map(function (entry) { return [entry.id, entry]; }));
@@ -146,8 +303,9 @@
     function pump() {
       if (state !== recent) return;
       if (cursor === shows.length && !active) {
-        state.items = Array.from(found.values()).sort(function (a, b) { return b.aired - a.aired || a.title.localeCompare(b.title) || a.id.localeCompare(b.id); });
-        state.loading = false; state.at = Date.now(); emit(); return;
+        state.candidates = Array.from(found.values()).sort(function (a, b) { return b.aired - a.aired || a.title.localeCompare(b.title) || a.id.localeCompare(b.id); });
+        state.candidatesAt = state.failed ? 0 : Date.now();
+        applyWatchStatus(); return;
       }
       while (active < 2 && cursor < shows.length) (function (batch) {
         cursor += batch.length; active++;
@@ -157,24 +315,36 @@
           .then(function () { active--; pump(); });
       })(shows.slice(cursor, cursor + 6));
     }
-    pump(); return state.items;
+    if (previous.ids === ids && now - previous.candidatesAt < ttl) {
+      state.candidates = previous.candidates.filter(function (card) { return card.aired >= now - 30 * 86400000; });
+      state.candidatesAt = previous.candidatesAt;
+      applyWatchStatus();
+    } else pump();
+    return visibleItems(state.items);
   }
 
   function status(tab) {
+    if ((tab === 'episodes' || tab === 'movies') && login && !bridge()) return 'Подключите помощник MyShows в Home Assistant';
+    if (tab === 'movies' && login) {
+      var error = movies.errors[0];
+      return movies.pending[0] ? 'Загружаем фильмы…' : error ? error.message : 'Добавьте фильмы в «Буду смотреть» в MyShows';
+    }
     if (tab === 'episodes' && login) {
       var source = load('watching');
       if (source.loading || recent.loading) return 'Загружаем новые серии…';
       if (source.error) return source.error;
-      return recent.failed ? 'Не удалось проверить часть сериалов. Попробуйте позже.' : 'За последние 30 дней новых серий нет';
+      return recent.error || (recent.failed ? 'Не удалось проверить часть сериалов. Попробуйте позже.' : 'За последние 30 дней новых непросмотренных серий нет');
     }
     if (tab !== 'popular' && !login) return 'Укажите имя в Настройки → Профиль MyShows';
     var current = load(tab);
-    return current.loading ? 'Загружаем MyShows…' : current.error || 'В этом списке пока нет сериалов';
+    return current.loading || (tab === 'popular' && !profile.at && profile.loading) ?
+      'Загружаем MyShows…' : current.error || 'В этом списке пока нет сериалов';
   }
   function applyProfile(value, rows) {
     try { if (value) localStorage.setItem(KEY, value); else localStorage.removeItem(KEY); }
     catch (e) { throw new Error('Не удалось сохранить профиль на телевизоре.'); }
-    login = value; profile = feed(); recent = {items: [], at: 0, loading: false, failed: 0, ids: ''};
+    login = value; profile = feed(); recent = {items: [], candidates: [], candidatesAt: 0, at: 0, loading: false, failed: 0, ids: ''};
+    movies = {pages: {}, pending: {}, errors: {}};
     if (value) { profile.items = classify(rows, true); profile.at = Date.now(); }
     emit();
   }
@@ -245,10 +415,118 @@
     else if (!editing && (key === 37 || key === 38) && !busy) { event.preventDefault(); input.focus(); }
   }, true);
   window.addEventListener('resize', function () { if (opened) paint(); });
+  var movieDialog, movieButtons, movieHint, movieTitle, movieSelection, selectedMovie, movieAction = 0, marking = false;
+
+  function paintMovie() {
+    movieButtons.forEach(function (button, index) { button.classList.toggle('search-focus', index === movieAction); });
+  }
+  function closeMovie() {
+    movieDialog.classList.remove('open');
+    var selection = movieSelection;
+    selectedMovie = null;
+    CatalogHome.restore(selection);
+  }
+  function openMovie(item, selection) {
+    if (!movieDialog) {
+      movieDialog = node('div', 'layer sheet movie-search', document.getElementById('stage'));
+      movieDialog.id = 'myshows-movie';
+      movieDialog.setAttribute('role', 'dialog');
+      movieDialog.setAttribute('aria-modal', 'true');
+      var box = node('div', 'box', movieDialog);
+      movieTitle = node('h2', 'search-title', box);
+      movieTitle.id = 'myshows-movie-title';
+      movieDialog.setAttribute('aria-labelledby', movieTitle.id);
+      var actions = node('div', 'search-form', box);
+      movieButtons = ['Найти для просмотра', 'Посмотрел'].map(function (label, index) {
+        var button = node('button', 'search-submit', actions, label);
+        button.type = 'button';
+        button.onclick = function () { movieAction = index; chooseMovieAction(); };
+        return button;
+      });
+      movieHint = node('div', 'search-status', box);
+      movieHint.setAttribute('aria-live', 'polite');
+    }
+    selectedMovie = item; movieSelection = selection; movieAction = 0;
+    movieTitle.textContent = item.title;
+    movieHint.textContent = '← → — действие · OK — выбрать · Back — назад';
+    FreeMyTV.state.zone = 'myshows-movie';
+    movieDialog.classList.add('open');
+    paintMovie();
+  }
+  function chooseMovieAction() {
+    if (marking || !selectedMovie) return;
+    var item = selectedMovie, selection = movieSelection;
+    if (!movieAction) {
+      closeMovie();
+      CombinedSearch.openForTitle(item.title, selection);
+      return;
+    }
+    marking = true;
+    movieHint.textContent = 'Сохраняем отметку в MyShows…';
+    markMovie(item.id).then(function () {
+      marking = false; closeMovie();
+      FreeMyTV.toast('Посмотрел — сохранено в MyShows');
+    }).catch(function (error) {
+      marking = false;
+      movieHint.textContent = error.message || 'Не удалось сохранить отметку';
+    });
+  }
+  document.addEventListener('keydown', function (event) {
+    if (!selectedMovie) return;
+    event.preventDefault(); event.stopImmediatePropagation(); FreeMyTV.poke();
+    if (marking) return;
+    var key = event.keyCode;
+    if (key === 10009 || key === 27 || key === 461 || key === 8) closeMovie();
+    else if (key === 37 || key === 39) { movieAction = key === 37 ? 0 : 1; paintMovie(); }
+    else if ((key === 13 || key === 65376) && !event.repeat) chooseMovieAction();
+  }, true);
+  function matchEpisodes(series, keys) {
+    function normalize(title) { return String(title || '').toLowerCase().trim().replace(/ё/g, 'е').replace(/\s+/g, ' '); }
+    var title = normalize(series.name), original = normalize(series.original);
+    if (!title || !Number.isInteger(series.year)) return Promise.resolve({});
+    return rpc('shows.Search', {query: series.name}).then(function (shows) {
+      var matched = {};
+      shows.forEach(function (show) {
+        if (Number(show.year) === series.year && /^[1-9][0-9]{0,8}$/.test(String(show.id)) &&
+            (title === normalize(show.title) || (original && original === normalize(show.titleOriginal)))) matched[show.id] = true;
+      });
+      var ids = Object.keys(matched);
+      if (ids.length !== 1) return {};
+      return rpc('shows.GetById', {showId: Number(ids[0]), withEpisodes: true}).then(function (show) {
+        var result = {};
+        (show.episodes || []).forEach(function (episode) {
+          if (episode.isSpecial || String(episode.showId) !== ids[0] || !/^[1-9][0-9]{0,8}$/.test(String(episode.id))) return;
+          var dates = [episode.airDateUTC, episode.airDate].filter(Boolean);
+          dates.forEach(function (date) {
+            var match = /^(\d{4}-\d{2}-\d{2})(?:T|\s|$)/.exec(date);
+            if (!match) return;
+            var key = episode.seasonNumber + ':' + episode.episodeNumber + ':' + match[1];
+            if (keys.indexOf(key) < 0) return;
+            if (Object.prototype.hasOwnProperty.call(result, key)) {
+              if (result[key] && result[key].id !== episode.id) result[key] = null;
+            } else result[key] = episode;
+          });
+        });
+        Object.keys(result).forEach(function (key) { if (!result[key]) delete result[key]; });
+        return result;
+      });
+    });
+  }
+
   window.MyShowsCatalog = {
-    items: function (tab) { return tab === 'episodes' ? recentEpisodes() : load(tab).items[tab] || []; },
-    recentInOverview: function () { return recent.items; },
+    items: function (tab) {
+      if (tab === 'episodes') return recentEpisodes();
+      if (tab === 'movies') return movieItems(0).items;
+      if (tab === 'popular') {
+        var personal = load('watching');
+        if (login && !personal.at && personal.loading) return [];
+      }
+      return visibleItems(load(tab).items[tab] || []);
+    },
+    recentInOverview: function () { load('watching'); return visibleItems(recent.items); },
+    movieItems: movieItems, openMovie: openMovie,
+    canMarkMovies: function () { return Boolean(login && bridge()); }, markMovieProgress: markMovieProgress,
     loadPoster: loadPoster, status: status, onChange: function (fn) { listeners.push(fn); },
-    profile: function () { return login; }, open: open, close: close
+    profile: function () { return login; }, open: open, close: close, matchEpisodes: matchEpisodes
   };
 })();

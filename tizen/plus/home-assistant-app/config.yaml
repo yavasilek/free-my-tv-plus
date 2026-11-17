@@ -1,0 +1,31 @@
+name: Free My TV — MyShows
+description: Отметки серий через браузер для Free My TV
+version: "0.2.2"
+slug: fmtv_myshows_browser
+arch: [amd64]
+startup: application
+boot: manual
+init: false
+ingress: true
+ingress_port: 8099
+ports:
+  8768/tcp: null
+ports_description:
+  8768/tcp: Локальный API каталога для телевизора
+map:
+  - type: addon_config
+    read_only: false
+options:
+  login: ""
+  login_window: false
+  relay_key: ""
+  catalog_enabled: false
+  auto_movies: false
+  core_ip: "172.30.32.1"
+schema:
+  login: str
+  login_window: bool
+  relay_key: password
+  catalog_enabled: bool
+  auto_movies: bool
+  core_ip: str

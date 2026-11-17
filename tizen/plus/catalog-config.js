@@ -11,7 +11,7 @@
     vokino: {name: 'VoKino', tabs: [{id: 'overview', name: 'Обзор'}].concat(VoKinoSections.all().map(function (d) { return {id: d.id, name: d.name}; }))},
     ivi: {name: 'Иви', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'movies', name: 'Фильмы', category: 14}, {id: 'series', name: 'Сериалы', category: 15}, {id: 'cartoons', name: 'Мультфильмы', category: 17}]},
     myshows: {name: 'MyShows', tabs: [{id: 'overview', name: 'Обзор'}, {id: 'popular', name: 'Топ сериалов'},
-      {id: 'watching', name: 'Смотрю'}, {id: 'episodes', name: 'Новые серии'}, {id: 'later', name: 'Буду смотреть'}, {id: 'finished', name: 'Просмотрено'}]}
+      {id: 'watching', name: 'Смотрю'}, {id: 'episodes', name: 'Новые серии'}, {id: 'later', name: 'Буду смотреть'}, {id: 'movies', name: 'Фильмы'}]}
   };
   function known(id) { return Object.prototype.hasOwnProperty.call(defs, id); }
   function tab(service, id) { var rows = known(service) ? defs[service].tabs : []; for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i]; return null; }
@@ -32,6 +32,7 @@
       tabOrder.splice(tabOrder.indexOf('watching') + 1, 0, 'episodes');
       if (tabEnabled.indexOf('episodes') < 0) tabEnabled.push('episodes');
     }
+    if (id === 'myshows' && value && Array.isArray(value.order) && value.order.indexOf('movies') < 0) tabEnabled.push('movies');
     settings.tabs[id] = {order: tabOrder, enabled: tabEnabled};
   });
   function services() { return settings.order.map(function (id) { return {id: id, name: defs[id].name, enabled: settings.enabled.indexOf(id) >= 0}; }); }

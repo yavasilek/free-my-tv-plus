@@ -44,8 +44,18 @@
     });
     return mixed;
   }
+  function moviePage(page) {
+    var count = Prefs.cards(), start = (page - 1) * count, items = [], more = true;
+    for (var source = 0; source < 1000 && more && items.length <= start + count; source++) {
+      var data = MyShowsCatalog.movieItems(source);
+      items = items.concat(data.items);
+      more = data.more;
+    }
+    return {items: items.slice(start, start + count), next: items.length > start + count || more};
+  }
   function picks(service, tab, page) {
     if (service === 'myshows') {
+      if (tab === 'movies') return moviePage(page).items;
       var items = tab === 'overview' ? mix(CatalogConfig.tabs(service).filter(function (t) {
         return t.id !== 'overview';
       }).map(function (t) { return t.id === 'episodes' ? MyShowsCatalog.recentInOverview() : MyShowsCatalog.items(t.id); })) : MyShowsCatalog.items(tab);
@@ -64,6 +74,7 @@
   }
   function next(service, tab, page) {
     if (service === 'vokino') return VoKinoBridge.turnPage(tab === 'overview' ? null : 'vokino-' + tab, 1);
+    if (service === 'myshows' && tab === 'movies') return moviePage(page).next;
     if (tab === 'overview' || service === 'myshows') return picks(service, tab, page + 1).length > 0;
     var count = Prefs.cards(), size = service === 'kinopoisk' ? 20 : 16, end = page * count, sourcePage = Math.floor((end - 1) / size) + 1, value = cache[cacheKey(service, tab, sourcePage)];
     return !!value && (value.items.length > (end - 1) % size + 1 || !!value.nextPage);

@@ -93,6 +93,24 @@ try{
     return route.fulfill({json:{films:q==='пусто'?[]:Array.from({length:20},(_,i)=>({filmId:page*100+i+1,nameRu:q+' '+i,year:'2024',rating:'7.5',posterUrlPreview:'https://kinopoiskapiunofficial.tech/images/posters/kp_small/fixture.jpg'})),pagesCount:q==='пусто'?0:2}});
   });
   const myShowsCalls=[];
+  let movieWatched=false, secondEpisodeWatched=false;
+  await full.addInitScript(()=>localStorage.setItem('fmtv.myshows.catalog.v1',JSON.stringify({
+    url:'http://catalog.local:8768',key:'fixture_key_for_the_local_catalog_only'
+  })));
+  await full.route('http://catalog.local:8768/myshows/**',route=>{
+    const req=route.request(), url=new URL(req.url());
+    const headers={'access-control-allow-origin':'*','access-control-allow-headers':'Authorization','access-control-allow-methods':'GET, POST, OPTIONS'};
+    if(req.method()==='OPTIONS')return route.fulfill({status:204,headers});
+    assert.equal(url.searchParams.get('login'),'public_demo');
+    assert.equal(req.headers().authorization,'Bearer fixture_key_for_the_local_catalog_only');
+    if(url.pathname.endsWith('/episodes'))return route.fulfill({headers,json:{result:[{showId:901,watched:secondEpisodeWatched?[87001,87002]:[87001]}]}});
+    if(url.pathname.endsWith('/mark')){
+      assert.equal(req.method(),'POST');assert.equal(url.searchParams.get('id'),'7818');
+      movieWatched=true;
+      return route.fulfill({headers,json:{result:true}});
+    }
+    return route.fulfill({headers,json:{result:{items:[{id:7818,title:'Тестовый фильм',year:2025,watched:movieWatched}],more:false}}});
+  });
   let posterLookups=0, peakPosterLookups=0;
   const coverSvg='<svg xmlns="http://www.w3.org/2000/svg" width="360" height="540"><path fill="#516275" d="M0 0h360v540H0z"/></svg>';
   await full.route('https://media.myshows.me/shows/**',async route=>{
@@ -118,6 +136,7 @@ try{
     const show=(id,title)=>({id,title,year:2024,rating:4.6,image:'https://media.myshows.me/shows/small/fixture/'+id+'.jpg'});
     const profile=[
       {show:show(901,'Тьма'),watchStatus:'watching',watchedEpisodes:3,totalEpisodes:26},
+      {show:show(100,'Сериал 0'),watchStatus:'watching',watchedEpisodes:8,totalEpisodes:8},
       {show:show(902,'Разделение'),watchStatus:'later',watchedEpisodes:0,totalEpisodes:19},
       {show:show(903,'Шерлок'),watchStatus:'finished',watchedEpisodes:13,totalEpisodes:13},
       {show:show(904,'Архив'),watchStatus:'cancelled'}
@@ -553,7 +572,11 @@ try{
   await full.setViewport({width:1920,height:1080});
   await full.reload();
   await full.waitForFunction(()=>window.CatalogHome&&MyShowsCatalog.items('watching').length===1);
-  assert.deepEqual(await full.eval(()=>['watching','later','finished'].map(t=>MyShowsCatalog.items(t)[0].title)),['Тьма','Разделение','Шерлок']);
+  assert.deepEqual(await full.eval(()=>['watching','later'].map(t=>MyShowsCatalog.items(t).map(x=>x.title))),[['Тьма'],['Разделение']]);
+  assert.equal(await full.eval(()=>CatalogConfig.tabs('myshows',true).some(t=>t.id==='finished')),false);
+  await full.waitForFunction(()=>MyShowsCatalog.items('popular').length>0);
+  assert.ok(await full.eval(()=>['popular','overview'].every(tab=>CatalogFeeds.picks('myshows',tab,1).every(card=>card.id!=='100'&&card.id!=='903'))),
+    'Completed series stay out of the public top and the Overview when a profile is connected');
   assert.ok(myShowsCalls.every(r=>!r.authorization),'Public requests carry no account credentials');
   await full.eval(()=>CatalogHome.focus('myshows','tabs'));
   await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowDown');
@@ -567,14 +590,24 @@ try{
   assert.deepEqual(await full.eval(()=>[CatalogHome.selection().service,CatalogHome.selection().choices.myshows.tab,FreeMyTV.state.zone]),['myshows','watching','catalog-cards']);
   assert.equal(myShowsCalls.some(r=>r.method==='episodes-batch'),false,'The Overview does not start a batch of episode requests');
   await full.keyboard.press('ArrowUp');await full.keyboard.press('ArrowRight');
-  await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===2);
+  await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===1);
   const newEpisodes=await full.locator('[data-service="myshows"] .catalog-meta').allTextContents();
-  assert.match(newEpisodes[0],/^S02E02/);assert.match(newEpisodes[1],/^S02E01/);
+  assert.deepEqual(newEpisodes.map(meta=>meta.slice(0,6)),['S02E02']);
   assert.deepEqual(myShowsCalls.filter(r=>r.method==='episodes-batch').map(r=>r.ids),[[901]],'Only shows in Watching are included');
   await full.keyboard.press('ArrowDown');await full.keyboard.press('Enter');
   await full.waitForFunction(()=>CombinedSearch.isOpen()&&document.getElementById('combined-search-query').value==='Тьма');
   await full.keyboard.press('Escape');
   assert.equal(await full.eval(()=>CatalogHome.selection().choices.myshows.tab),'episodes');
+  secondEpisodeWatched=true;
+  await full.eval(()=>{window.__realDateNow=Date.now;Date.now=()=>window.__realDateNow()+61000;CatalogHome.refresh();});
+  await full.waitForFunction(()=>document.querySelectorAll('[data-service="myshows"] .catalog-card').length===0);
+  await full.eval(()=>{Date.now=window.__realDateNow;});
+  await full.keyboard.press('ArrowUp');await full.keyboard.press('ArrowRight');await full.keyboard.press('ArrowRight');
+  await full.waitForFunction(()=>document.querySelector('[data-service="myshows"] .catalog-meta')?.textContent.includes('Буду смотреть'));
+  await full.keyboard.press('ArrowDown');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>FreeMyTV.state.zone==='myshows-movie');
+  await full.keyboard.press('ArrowRight');await full.keyboard.press('Enter');
+  await full.waitForFunction(()=>FreeMyTV.state.zone==='catalog-cards'&&document.querySelector('[data-service="myshows"] .catalog-meta')?.textContent.includes('Посмотрел'));
   await openMyShows();
   await full.locator('#myshows-profile-login').fill('');
   await full.keyboard.press('Enter');await full.keyboard.press('Enter');

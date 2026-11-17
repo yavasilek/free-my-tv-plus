@@ -1,0 +1,47 @@
+input_text:
+  fmtv_myshows_last_result:
+    name: Free My TV — результат отметки MyShows
+    max: 120
+
+input_boolean:
+  fmtv_myshows_auto_mark:
+    name: Free My TV — автоматически отмечать серии в MyShows
+
+rest_command:
+  fmtv_myshows_mark_episode:
+    url: !secret fmtv_myshows_browser_url
+    method: post
+    headers:
+      Authorization: !secret fmtv_myshows_browser_authorization
+    content_type: application/json
+    payload: "{{ episode | to_json }}"
+    timeout: 45
+
+automation:
+  - id: fmtv_myshows_browser_mark_episode
+    alias: Free My TV — отметить серию в MyShows
+    mode: queued
+    triggers:
+      - trigger: event
+        event_type: fmtv_myshows_episode_candidate
+    variables:
+      episode: "{{ trigger.event.data }}"
+    conditions:
+      - condition: state
+        entity_id: input_boolean.fmtv_myshows_auto_mark
+        state: "on"
+    actions:
+      - action: rest_command.fmtv_myshows_mark_episode
+        data:
+          episode: "{{ episode }}"
+        response_variable: browser
+        continue_on_error: true
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.fmtv_myshows_last_result
+        data:
+          value: >-
+            {% set response = browser | default({}) -%}
+            {% set body = response.get('content', {}) -%}
+            {{ episode.show_id }}/{{ episode.episode_id }}
+            {{ body.get('result', 'relay-error') if body is mapping else 'relay-error' }}

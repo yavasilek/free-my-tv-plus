@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<title>Вход в MyShows</title>
+<a id="open-browser" href="vnc.html?autoconnect=1&amp;resize=scale">Открыть браузер MyShows</a>
+<script>
+  const link = document.getElementById('open-browser');
+  const target = new URL(link.href);
+  target.searchParams.set('path', new URL('websockify', location.href).pathname.slice(1));
+  link.href = target.href;
+</script>
+</html>

@@ -169,20 +169,37 @@
   TV.launch = function (id, params, done) {
     if ((id === '9Ur5IzDKqV.TizenYouTube' || id === youtubeId) && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeStarterId) >= 0) id = youtubeStarterId;
     if (id === '9Ur5IzDKqV.TizenYouTube' && favoriteIds.indexOf(id) < 0 && favoriteIds.indexOf(youtubeId) >= 0) id = youtubeId;
-    if (typeof id !== 'string' || id.indexOf(prefix) !== 0) return launchWithReturn(id, function () {
-      original.launch.call(TV, id, params, function (ok) { if (!ok) signal('/cancel-watch'); if (done) done(ok); });
-    });
+    if (typeof id !== 'string' || id.indexOf(prefix) !== 0) {
+      function openApp() {
+        launchWithReturn(id, function () {
+          original.launch.call(TV, id, params, function (ok) {
+            if (!ok) {
+              signal('/cancel-watch');
+              if (id === appId && window.VoKinoProgress) VoKinoProgress.cancel();
+            }
+            if (done) done(ok);
+          });
+        });
+      }
+      if (id === appId && window.VoKinoProgress) VoKinoProgress.prepare(account(), null, openApp);
+      else openApp();
+      return;
+    }
     var ident = id.slice(prefix.length);
     if (!/^[a-f0-9]{24}$/.test(ident)) { if (done) done(false); return; }
     var a = account(), base = a ? a.base : PUBLIC_BASE;
     bridge.lastAction = {id: ident, status: 'requesting'};
-    launchWithReturn(appId, function () { try {
-      var payload = new tizen.ApplicationControlData('PAYLOAD', [JSON.stringify({values: base + '/view/' + ident})]);
-      var control = new tizen.ApplicationControl('http://samsung.com/appcontrol/operation/eden', null, null, null, [payload]);
-      tizen.application.launchAppControl(control, appId, function () {
-        bridge.lastAction.status = 'accepted'; if (done) done(true);
-      }, function (err) { signal('/cancel-watch'); bridge.lastAction.status = 'error'; if (done) done(false); });
-    } catch (err) { signal('/cancel-watch'); bridge.lastAction.status = 'error'; if (done) done(false); } });
+    function launchCard() {
+      launchWithReturn(appId, function () { try {
+        var payload = new tizen.ApplicationControlData('PAYLOAD', [JSON.stringify({values: base + '/view/' + ident})]);
+        var control = new tizen.ApplicationControl('http://samsung.com/appcontrol/operation/eden', null, null, null, [payload]);
+        tizen.application.launchAppControl(control, appId, function () {
+          bridge.lastAction.status = 'accepted'; if (done) done(true);
+        }, function (err) { if (window.VoKinoProgress) VoKinoProgress.cancel(); signal('/cancel-watch'); bridge.lastAction.status = 'error'; if (done) done(false); });
+      } catch (err) { if (window.VoKinoProgress) VoKinoProgress.cancel(); signal('/cancel-watch'); bridge.lastAction.status = 'error'; if (done) done(false); } });
+    }
+    if (window.VoKinoProgress) window.VoKinoProgress.prepare(a, ident, launchCard);
+    else launchCard();
   };
   function get(base, path, token, done) {
     if (ALLOWED.indexOf(base) < 0) { done(new Error('Unknown API host')); return; }
@@ -320,9 +337,10 @@
     }
   } catch (e) {}
   bridge.setFavorites(Prefs.shelf(), true);
-  document.addEventListener('visibilitychange', function () { schedule(); notifyVisible(); });
+  function progress() { if (!document.hidden && window.VoKinoProgress) window.VoKinoProgress.resume(account()); }
+  document.addEventListener('visibilitychange', function () { schedule(); notifyVisible(); progress(); });
   bridge.timer = setInterval(schedule, 60000);
   schedule();
   try { tizen.application.getAppInfo('FreeMyTVio.Autostart'); serviceAvailable = true; tizen.application.launch('FreeMyTVio.Autostart', function () {}, function () {}); } catch (e) {}
-  setTimeout(notifyVisible, 0); setTimeout(notifyVisible, 2000);
+  setTimeout(notifyVisible, 0); setTimeout(notifyVisible, 2000); setTimeout(progress, 2000);
 })();

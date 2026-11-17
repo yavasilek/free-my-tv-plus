@@ -1,0 +1,49 @@
+input_text:
+  fmtv_myshows_last_progress:
+    name: Free My TV — последнее событие MyShows
+    max: 120
+
+automation:
+  - id: fmtv_myshows_receive_progress
+    alias: Free My TV — принять прогресс VoKino
+    mode: queued
+    triggers:
+      - trigger: webhook
+        webhook_id: !secret fmtv_myshows_webhook_id
+        allowed_methods: [POST]
+        local_only: true
+    variables:
+      episode: >-
+        {% set payload = trigger.json | default(trigger.data | default({})) -%}
+        {{ dict(payload) if payload is mapping else {} }}
+    conditions:
+      - condition: template
+        value_template: >-
+          {{ episode is mapping
+             and episode.get('source') == 'fmtv-vokino-v1'
+             and (episode.get('show_id') | string) is match('^[1-9][0-9]{0,8}$')
+             and (episode.get('episode_id') | string) is match('^[1-9][0-9]{0,8}$')
+             and (episode.get('season') | string) is match('^[1-9][0-9]{0,2}$')
+             and (episode.get('number') | string) is match('^[1-9][0-9]{0,3}$')
+             and 0 <= episode.get('progress') | float(-1) <= 100 }}
+    actions:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.fmtv_myshows_last_progress
+        data:
+          value: >-
+            {{ episode.show_id }}/{{ episode.episode_id }}
+            S{{ episode.season }}E{{ episode.number }}
+            {{ episode.progress | float | round(2) }}%
+      - if:
+          - condition: template
+            value_template: "{{ episode.get('candidate') == '1' and episode.progress | float(-1) >= 90 }}"
+        then:
+          - event: fmtv_myshows_episode_candidate
+            event_data:
+              source: fmtv-vokino-v1
+              show_id: "{{ episode.show_id | int }}"
+              episode_id: "{{ episode.episode_id | int }}"
+              season: "{{ episode.season | int }}"
+              number: "{{ episode.number | int }}"
+              progress: "{{ episode.progress | float }}"
