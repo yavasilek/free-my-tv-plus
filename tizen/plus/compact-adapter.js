@@ -75,7 +75,6 @@
     choices.forEach(function (d) {
       if (!d.enabled) return;
       var list = section(d.id);
-      if (d.id === 'history') list = list.filter(function (p) { return p.resume; }).concat(list.filter(function (p) { return !p.resume; }));
       groups.push(list); longest = Math.max(longest, list.length);
     });
     function add(p) { if (p && !seen[p.id]) { seen[p.id] = true; mixed.push(p); } }

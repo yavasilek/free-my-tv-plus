@@ -249,3 +249,11 @@ partial.box.VoKinoBridge.refresh(false);await flush();assert.match(partial.box.V
 const visible=boot(Object.fromEntries(b.store));visible.events.visibilitychange();
 for(const timer of visible.timers.filter(t=>t.delay===1600))timer.fn();await flush();assert.ok(visible.requests.some(r=>r.url.includes('/timeline/')),'Returning refreshes a fresh personal cache');
 console.log('Passed: private no-store, future timestamps, expired authorization warnings with partial success and return refresh.');
+const recentFirst=boot({'fmtv.vokino.account':JSON.stringify(account)});
+recentFirst.box.VoKinoSections.enable('favorites',false);
+recentFirst.box.VoKinoSections.enable('continue',true);
+recentFirst.box.VoKinoBridge.accept([recentFirst.box.VoKinoBridge.fromSource(row(id1,{current:999,time:1000,name:'Just finished'}),'history'),recentFirst.box.VoKinoBridge.fromSource(row(id2,{current:100,time:1000,name:'Older unfinished'}),'history')],Date.now()/1000,account.key);
+assert.equal(recentFirst.box.Data.picks(null)[0].id,'vokino:'+id1,'Overview keeps the actual latest title first, including completed episodes');
+assert.equal(recentFirst.box.Data.picks('vokino-history')[0].id,'vokino:'+id1);
+assert.equal(recentFirst.box.Data.picks('vokino-continue')[0].id,'vokino:'+id2,'Continue retains unfinished titles independently');
+console.log('Passed: Overview preserves actual VoKino history order while Continue remains independent.');
