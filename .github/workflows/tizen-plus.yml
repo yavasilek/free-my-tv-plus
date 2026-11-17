@@ -2,11 +2,23 @@ name: Tizen Plus
 on:
   push:
     branches: [main]
+    tags: ["v*"]
+    paths: ["tizen/**", "web/**", "webos/**", "tools/**", "i18n/**", "translations/**", ".github/workflows/tizen-plus.yml"]
   pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths: ["tizen/**", "web/**", "webos/**", "tools/**", "i18n/**", "translations/**", ".github/workflows/tizen-plus.yml"]
+  workflow_dispatch:
+
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
 jobs:
   plus:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

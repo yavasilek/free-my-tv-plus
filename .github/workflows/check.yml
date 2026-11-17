@@ -1,22 +1,46 @@
-# Builds everything and checks the catalogues on every pull request and push to main, with tools/check.sh: the same
-# script contributors run before pushing, so a PR shows whether it still builds before anyone tries it on a TV.
+# Full app checks for relevant main changes, ready pull requests, version tags and manual pre-publication runs.
 name: Check
 
 on:
-  pull_request:
   push:
     branches: [main]
+    tags: ["v*"]
+    paths-ignore:
+      - "*.md"
+      - "docs/**/*.md"
+      - ".github/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE/**"
+      - ".work.bvc"
+      - ".work.bvc/**"
+      - ".workgraph/**"
+      - "docs/**"
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "*.md"
+      - "docs/**/*.md"
+      - ".github/*.md"
+      - ".github/ISSUE_TEMPLATE/**"
+      - ".github/PULL_REQUEST_TEMPLATE/**"
+      - ".work.bvc"
+      - ".work.bvc/**"
+      - ".workgraph/**"
+      - "docs/**"
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # A new push to a PR cancels the run for the push before it (on main, every merge keeps its own run).
 concurrency:
-  group: check-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
 
 jobs:
   android:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Google TV app
     runs-on: ubuntu-latest
     steps:
@@ -36,6 +60,7 @@ jobs:
       - run: tools/check.sh android
 
   web:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     name: Translations, LG and Samsung
     runs-on: ubuntu-latest
     steps:
