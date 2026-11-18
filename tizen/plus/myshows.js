@@ -26,7 +26,7 @@
     url.searchParams.set('login', login);
     Object.keys(params).forEach(function (key) { url.searchParams.set(key, params[key]); });
     var controller = new AbortController(), timer = setTimeout(function () { controller.abort(); }, 25000);
-    var options = {method: method || 'GET', credentials: 'omit', redirect: 'error',
+    var options = {method: method || 'GET', credentials: 'omit', redirect: 'error', cache: 'no-store',
       headers: {Authorization: 'Bearer ' + connection.key}, signal: controller.signal};
     if (payload) {
       options.headers['Content-Type'] = 'application/json';
@@ -517,6 +517,27 @@
     });
   }
 
+  function missingEpisodes(episodes) {
+    var ids = [];
+    Object.keys(episodes).forEach(function (key) {
+      var id = String(episodes[key].showId);
+      if (/^[1-9][0-9]{0,8}$/.test(id) && ids.indexOf(id) < 0) ids.push(id);
+    });
+    if (!ids.length) return Promise.resolve({});
+    if (ids.length > 18) return Promise.reject(new Error('Too many shows'));
+    return accountRequest('episodes', {ids: ids.join(',')}).then(function (rows) {
+      var watched = {}, result = {};
+      if (!Array.isArray(rows)) throw new Error('Не удалось проверить отметки MyShows');
+      rows.forEach(function (row) { if (row && Array.isArray(row.watched)) watched[String(row.showId)] = row.watched.map(String); });
+      if (ids.some(function (id) { return !watched[id]; })) throw new Error('MyShows не подтвердил список серий');
+      Object.keys(episodes).forEach(function (key) {
+        var episode = episodes[key];
+        if (watched[String(episode.showId)].indexOf(String(episode.id)) < 0) result[key] = episode;
+      });
+      return result;
+    });
+  }
+
   window.MyShowsCatalog = {
     items: function (tab) {
       if (tab === 'episodes') return recentEpisodes();
@@ -531,6 +552,8 @@
     movieItems: movieItems, openMovie: openMovie,
     canMarkMovies: function () { return Boolean(login && bridge()); }, markMovieProgress: markMovieProgress,
     loadPoster: loadPoster, status: status, onChange: function (fn) { listeners.push(fn); },
-    profile: function () { return login; }, open: open, close: close, matchEpisodes: matchEpisodes
+    profile: function () { return login; }, open: open, close: close, matchEpisodes: matchEpisodes,
+    canSyncEpisodes: function () { return Boolean(login && bridge()); }, missingEpisodes: missingEpisodes,
+    invalidateWatchStatus: function () { recent.at = 0; profile.at = 0; emit(); }
   };
 })();

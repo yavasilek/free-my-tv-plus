@@ -618,6 +618,11 @@ try{
   assert.equal(await full.eval(()=>MyShowsCatalog.items('episodes').length),0);
   // The upstream 1.5 inputs editor must coexist with our favorite-app editor.
   await openSettings();
+  await full.eval(()=>{FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>r.textContent.startsWith('Сверять историю VoKino с MyShows'));if(FreeMyTV.state.row<0)throw new Error('History synchronization setting missing');FreeMyTV.activate();});
+  assert.equal(await full.eval(()=>VoKinoProgress.historyEnabled()),true);
+  await full.keyboard.press('Enter');
+  assert.equal(await full.eval(()=>VoKinoProgress.historyEnabled()),false,'History reconciliation can be disabled from the remote');
+  await openSettings();
   await full.eval(()=>{
     FreeMyTV.state.row=Array.from(document.querySelectorAll('#settings .row')).findIndex(r=>/^(Inputs|Входы)$/.test(r.firstChild.textContent));
     if(FreeMyTV.state.row<0)throw new Error('Inputs editor setting missing');

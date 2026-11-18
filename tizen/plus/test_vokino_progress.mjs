@@ -51,3 +51,43 @@ const match=()=>ms.MyShowsCatalog.matchEpisodes({name:'Example',year:2026},['1:1
 assert.equal((await match())['1:1:2026-04-28'].id,20,'Translated premiere dates may differ by five days');
 episodes.push({...episodes[0],id:21});assert.equal(Object.keys(await match()).length,0,'Ambiguous episode identity is rejected');episodes.pop();episodes[0].airDate='2026-01-01';assert.equal(Object.keys(await match()).length,0,'Large date differences are rejected');episodes[0].airDate='2026-04-23';shows.push({...shows[0],id:11});assert.equal(Object.keys(await match()).length,0,'Ambiguous series identity is rejected');
 console.log('Passed: zero episode baselines, date-safe MyShows matching, card/dock tracking, delayed persistence, cancellation, no duplicate submissions and seek guard.');
+// History reconciliation runs against isolated fixtures; no real webhook or marks are used.
+const syncRun=boot(),syncWatched=new Set(['104/204']),syncPosts=[];
+syncRun.advance(120000000);syncRun.store.set('fmtv.vokino.account',JSON.stringify(account));syncRun.store.set('fmtv.myshows.history-sync.v1','1');
+syncRun.box.MyShowsCatalog.canSyncEpisodes=()=>true;
+syncRun.box.MyShowsCatalog.invalidateWatchStatus=()=>{};
+syncRun.box.MyShowsCatalog.matchEpisodes=async(series,keys)=>Object.fromEntries(keys.map(k=>[k,{showId:Number(series.name)+100,id:Number(series.name)+200,seasonNumber:1,episodeNumber:1}]));
+syncRun.box.MyShowsCatalog.missingEpisodes=async(episodes)=>Object.fromEntries(Object.entries(episodes).filter(([k,e])=>!syncWatched.has(e.showId+'/'+e.id)));
+syncRun.box.fetch=async(url,options)=>{
+ syncRun.requests.push({url,options});
+ if(options.method==='POST'){const p=new URLSearchParams(options.body);syncPosts.push(p.get('show_id')+'/'+p.get('episode_id'));return {ok:true};}
+ const u=new URL(url);let data;
+ if(u.pathname==='/v2/timeline/list'){const second=u.searchParams.get('page')==='2';data={channels:(second?[3,4,1]:[1,2]).map(n=>({details:{id:n.toString().padStart(24,'0'),type:'serial'}})),page:{next:second?null:'http://api.vokino.org/v2/timeline/list?page=2&token=UNTRUSTED'}};}
+ else if(u.pathname.includes('/view/'))data={details:{type:'serial',name:String(Number(u.pathname.split('/').pop())),released:2026},online:{Filmix:{playlist_url:'/v2/online/fixture'}}};
+ else data={channels:[{title:'Сезон 1',submenu:[{title:'Серия 1',details:{air_date:'28.04.2026'},timeline:{season:1,episode:1,current:950,time:1000}}]}]};
+ return {ok:true,json:async()=>data};
+};
+await syncRun.box.VoKinoProgress.syncHistory(account);await syncRun.settle();
+let syncState=JSON.parse(syncRun.store.get('fmtv.myshows.history-state.v1'));
+assert.equal(syncState.phase,'waiting');assert.equal(syncState.confirmed,0,'An opaque HTTP reply is not a confirmed MyShows mark');assert.equal(syncPosts.length,1);
+const reloadedSync=boot();reloadedSync.advance(120000000);
+for(const [key,value] of syncRun.store)reloadedSync.store.set(key,value);
+reloadedSync.box.fetch=syncRun.box.fetch;
+for(const name of ['canSyncEpisodes','invalidateWatchStatus','matchEpisodes','missingEpisodes'])reloadedSync.box.MyShowsCatalog[name]=syncRun.box.MyShowsCatalog[name];
+await reloadedSync.box.VoKinoProgress.syncHistory(account);await reloadedSync.settle();assert.equal(syncPosts.length,1,'A restored pending batch is checked instead of being submitted again');
+for(let i=0;i<20&&syncState.phase!=='done';i++){
+ for(const mark of syncPosts)syncWatched.add(mark);
+ await reloadedSync.delay(3500);syncState=JSON.parse(reloadedSync.store.get('fmtv.myshows.history-state.v1'));
+}
+assert.equal(syncState.phase,'done');assert.equal(syncState.checked,4,'Every series on every page is reconciled, not just the three recent series');assert.equal(syncState.confirmed,3);
+assert.equal(syncPosts.length,3,'Already-watched episodes and duplicated history titles are skipped');assert.equal(new Set(syncPosts).size,3);
+assert.ok(!syncRun.store.get('fmtv.myshows.history-state.v1').includes(account.token),'Saved reconciliation progress excludes account credentials');
+assert.equal(syncRun.requests.some(r=>r.url.includes('UNTRUSTED')),false,'Pagination credentials are never reused');
+const requestCount=syncRun.requests.length;await reloadedSync.box.VoKinoProgress.syncHistory(account);assert.equal(syncRun.requests.length,requestCount,'A completed scan waits before rechecking');
+const isolated=boot();isolated.store.set('fmtv.vokino.account',JSON.stringify(account));await isolated.box.VoKinoProgress.syncHistory(account);assert.equal(isolated.requests.length,0,'History reconciliation is opt-in');
+const helperStore=new Map([['fmtv.myshows.profile.v1','fixture'],['fmtv.myshows.catalog.v1',JSON.stringify({url:'http://helper.local:8768',key:'x'.repeat(32)})]]);let helperRows=[{showId:10,watched:[20]}];
+const hs={URL,AbortController,Date,Map,setTimeout,clearTimeout,addEventListener(){},document:{addEventListener(){}},localStorage:{getItem:k=>helperStore.get(k)||null},fetch:async(url,options)=>{assert.equal(options.cache,'no-store');return {ok:true,json:async()=>({result:helperRows})};}};hs.window=hs;vm.createContext(hs);vm.runInContext(msCode,hs);
+assert.equal(Object.keys(await hs.MyShowsCatalog.missingEpisodes({one:{showId:10,id:20}})).length,0);
+helperRows=[{showId:10,watched:[]}];assert.equal(Object.keys(await hs.MyShowsCatalog.missingEpisodes({one:{showId:10,id:20}})).length,1);
+helperRows=[];await assert.rejects(hs.MyShowsCatalog.missingEpisodes({one:{showId:10,id:20}}),'A missing account response must not authorize a mark');
+console.log('Passed: opt-in all-page history reconciliation, retained state, account-confirmed marks, duplicate/watched skips, sanitized pagination and fail-closed helper reads.');

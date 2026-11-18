@@ -351,16 +351,21 @@
     }
   } catch (e) {}
   bridge.setFavorites(Prefs.shelf(), true);
-  function progress() { if (!document.hidden && window.VoKinoProgress) window.VoKinoProgress.resume(account()); }
+  function progress(force) {
+    if (!document.hidden && window.VoKinoProgress) {
+      VoKinoProgress.resume(account());
+      if (VoKinoProgress.syncHistory) VoKinoProgress.syncHistory(account(), force === true);
+    }
+  }
   function returned() {
     if (!document.hidden) {
-      schedule(true); notifyVisible(); progress();
+      schedule(true); notifyVisible(); progress(true);
       setTimeout(function () { if (!document.hidden) schedule(true); }, 5000);
     }
   }
   document.addEventListener('visibilitychange', returned);
   window.addEventListener('appcontrol', returned);
-  bridge.timer = setInterval(schedule, 60000);
+  bridge.timer = setInterval(function () { schedule(); progress(); }, 60000);
   schedule(true);
   try { tizen.application.getAppInfo('FreeMyTVio.Autostart'); serviceAvailable = true; tizen.application.launch('FreeMyTVio.Autostart', function () {}, function () {}); } catch (e) {}
   setTimeout(notifyVisible, 0); setTimeout(notifyVisible, 2000); setTimeout(progress, 2000);

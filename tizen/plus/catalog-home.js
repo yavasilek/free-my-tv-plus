@@ -85,7 +85,7 @@
           button.onclick = function () { selected.card = index; focusRow(id, 'cards'); launch(); };
         });
       }
-      var warning = id === 'vokino' && VoKinoBridge.error;
+      var warning = id === 'vokino' ? VoKinoBridge.error : id === 'myshows' && window.VoKinoProgress && VoKinoProgress.historyStatus ? VoKinoProgress.historyStatus() : '';
       view.box.classList.toggle('catalog-has-warning', !!warning);
       view.status.classList.toggle('catalog-warning', !!warning);
       view.status.hidden = items.length > 0 && !warning; view.status.textContent = warning || (selected.tab ? CatalogFeeds.status(id, selected.tab, selected.page) : 'Включите вкладки этого сервиса в настройках');
